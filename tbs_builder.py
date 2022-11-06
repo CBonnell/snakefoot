@@ -12,20 +12,15 @@ from typing import Tuple, Sequence
 import mappings
 
 
-def _build_atv(type_oid, value):
-    atv = rfc5280.AttributeTypeAndValue()
-    atv['type'] = type_oid
-    atv['value'] = char.UTF8String(value)
-
-    return atv
-
-
 def build_rdn_sequence(rdns: Sequence[Tuple[univ.ObjectIdentifier, str]]):
     rdn_seq = rfc5280.RDNSequence()
 
     for oid, value in rdns:
         rdn = rfc5280.RelativeDistinguishedName()
-        atv = _build_atv(oid, value)
+
+        atv = rfc5280.AttributeTypeAndValue()
+        atv['type'] = oid
+        atv['value'] = char.UTF8String(value)
 
         rdn.append(atv)
         rdn_seq.append(rdn)
@@ -116,8 +111,7 @@ def build_tbscertificate(
     tbs_cert['subjectPublicKeyInfo']['algorithm']['algorithm'] = subject_key_oid
     tbs_cert['subjectPublicKeyInfo']['subjectPublicKey'] = univ.BitString(hexValue=binascii.b2a_hex(subject_key_value))
 
-    for ext in extensions:
-        tbs_cert['extensions'].append(ext)
+    tbs_cert['extensions'].extend(extensions)
 
     return tbs_cert
 
