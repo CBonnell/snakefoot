@@ -23,7 +23,7 @@ def persist(sig_alg_name,
             root_signer, root_cert, root_crl,
             ica_signer, ica_cert, ica_crl,
             ee_signer, ee_cert):
-    sig_alg_oid = mappings.ALG_TO_OID_MAPPINGS[sig_alg_name]
+    sig_alg_oid = mappings.OQS_ALG_TO_OID_MAPPINGS[sig_alg_name]
 
     shutil.rmtree(sig_alg_oid, True)
 
@@ -78,7 +78,7 @@ def build_crl(sig_alg_name, signer, signer_public_key, is_root):
     return signed_crl
 
 
-for sig_alg_name in mappings.ALG_TO_OID_MAPPINGS.keys():
+for sig_alg_name in mappings.OQS_ALG_TO_OID_MAPPINGS.keys():
     root_signer, root_public_key_octets, root_cert = build_root(sig_alg_name)
     root_crl = build_crl(sig_alg_name, root_signer, root_public_key_octets, True)
     ica_signer, ica_public_key_octets, ica_cert = build_ica(sig_alg_name, root_signer, root_public_key_octets)

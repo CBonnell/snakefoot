@@ -1,4 +1,4 @@
-ALG_TO_OID_MAPPINGS = {
+OQS_ALG_TO_OID_MAPPINGS = {
     'Dilithium2': '1.3.6.1.4.1.2.267.7.4.4',
     'Dilithium3': '1.3.6.1.4.1.2.267.7.6.5',
     'Dilithium5': '1.3.6.1.4.1.2.267.7.8.7',
@@ -22,6 +22,6 @@ ALG_TO_OID_MAPPINGS = {
 }
 
 
-OID_TO_ALG_MAPPINGS = {
-    v: k for k, v in ALG_TO_OID_MAPPINGS.items()
+OID_TO_OQS_ALG_MAPPINGS = {
+    v: k for k, v in OQS_ALG_TO_OID_MAPPINGS.items()
 }

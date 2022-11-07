@@ -119,7 +119,7 @@ def build_tbscertificate(
 def build_root(sig_alg_name, subject_public_key_octets):
     name = build_root_name(sig_alg_name)
 
-    key_oid_str = mappings.ALG_TO_OID_MAPPINGS[sig_alg_name]
+    key_oid_str = mappings.OQS_ALG_TO_OID_MAPPINGS[sig_alg_name]
     key_oid = univ.ObjectIdentifier(key_oid_str)
 
     return build_tbscertificate(
@@ -138,7 +138,7 @@ def build_ica(sig_alg_name, subject_public_key_octets, issuer_public_key_octets)
     issuer_name = build_root_name(sig_alg_name)
     subject_name = build_intermediate_name(sig_alg_name)
 
-    key_oid_str = mappings.ALG_TO_OID_MAPPINGS[sig_alg_name]
+    key_oid_str = mappings.OQS_ALG_TO_OID_MAPPINGS[sig_alg_name]
     key_oid = univ.ObjectIdentifier(key_oid_str)
 
     return build_tbscertificate(
@@ -157,7 +157,7 @@ def build_ee(sig_alg_name, subject_public_key_octets, issuer_public_key_octets):
     issuer_name = build_intermediate_name(sig_alg_name)
     subject_name = build_end_entity_name(sig_alg_name)
 
-    key_oid_str = mappings.ALG_TO_OID_MAPPINGS[sig_alg_name]
+    key_oid_str = mappings.OQS_ALG_TO_OID_MAPPINGS[sig_alg_name]
     key_oid = univ.ObjectIdentifier(key_oid_str)
 
     return build_tbscertificate(
@@ -175,7 +175,7 @@ def build_ee(sig_alg_name, subject_public_key_octets, issuer_public_key_octets):
 def build_crl(sig_alg_name, is_root, issuer_public_key_octets):
     issuer_name = build_root_name(sig_alg_name) if is_root else build_intermediate_name(sig_alg_name)
 
-    key_oid_str = mappings.ALG_TO_OID_MAPPINGS[sig_alg_name]
+    key_oid_str = mappings.OQS_ALG_TO_OID_MAPPINGS[sig_alg_name]
     key_oid = univ.ObjectIdentifier(key_oid_str)
 
     tbs_crl = rfc5280.TBSCertList()
