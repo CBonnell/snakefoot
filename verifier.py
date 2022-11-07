@@ -98,12 +98,12 @@ with zipfile.ZipFile(args.file) as z:
             good_oids.append(args.sig_alg_oid)
         else:
             bad_oids.append(args.sig_alg_oid)
-
-    for sig_alg_oid in mappings.OID_TO_OQS_ALG_MAPPINGS.keys():
-        if _execute_sig_alg_oid_test(z, sig_alg_oid):
-            good_oids.append(sig_alg_oid)
-        else:
-            bad_oids.append(sig_alg_oid)
+    else:
+        for sig_alg_oid in mappings.OID_TO_OQS_ALG_MAPPINGS.keys():
+            if _execute_sig_alg_oid_test(z, sig_alg_oid):
+                good_oids.append(sig_alg_oid)
+            else:
+                bad_oids.append(sig_alg_oid)
 
 print()
 print_report('bad', bad_oids)

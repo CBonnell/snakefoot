@@ -12,7 +12,7 @@ class CompositeSignatureValue(univ.SequenceOf):
     pass
 
 
-CompositeSignatureValue.componentType = univ.BitString
+CompositeSignatureValue.componentType = univ.BitString()
 CompositeSignatureValue.sizeSpec = constraint.ValueSizeConstraint(2, MAX)
 
 
@@ -20,7 +20,7 @@ class CompositeParams(univ.SequenceOf):
     pass
 
 
-CompositeParams.componentType = rfc5280.AlgorithmIdentifier
+CompositeParams.componentType = rfc5280.AlgorithmIdentifier()
 CompositeParams.sizeSpec = constraint.ValueSizeConstraint(2, MAX)
 
 
@@ -31,5 +31,5 @@ class CompositePublicKey(univ.SequenceOf):
     pass
 
 
-CompositePublicKey.componentType = rfc5280.SubjectPublicKeyInfo
-CompositePublicKey.componentType = constraint.ValueSizeConstraint(2, MAX)
+CompositePublicKey.componentType = rfc5280.SubjectPublicKeyInfo()
+CompositePublicKey.sizeSpec = constraint.ValueSizeConstraint(2, MAX)
