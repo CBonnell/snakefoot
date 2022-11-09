@@ -1,3 +1,5 @@
+from pyasn1_alt_modules import rfc5480
+
 OQS_ALG_TO_OID_MAPPINGS = {
     'Dilithium2': '1.3.6.1.4.1.2.267.7.4.4',
     'Dilithium3': '1.3.6.1.4.1.2.267.7.6.5',
@@ -24,4 +26,21 @@ OQS_ALG_TO_OID_MAPPINGS = {
 
 OID_TO_OQS_ALG_MAPPINGS = {
     v: k for k, v in OQS_ALG_TO_OID_MAPPINGS.items()
+}
+
+
+OID_TO_CLASSICAL_ALG_MAPPINGS = {
+    str(rfc5480.ecdsa_with_SHA256): 'ECDSA-P256-with-SHA256',
+    str(rfc5480.ecdsa_with_SHA384): 'ECDSA-P384-with-SHA384',
+}
+
+
+OID_TO_ALG_MAPPINGS = {
+    **OID_TO_OQS_ALG_MAPPINGS,
+    **OID_TO_CLASSICAL_ALG_MAPPINGS,
+}
+
+
+ALG_TO_OID_MAPPINGS = {
+    v: k for k, v in OID_TO_ALG_MAPPINGS.items()
 }

@@ -8,7 +8,7 @@ import shutil
 
 
 def persist_artifact(sig_alg_oids, subdir, filename, content):
-    dir_path = os.path.join('_'.join(sig_alg_oids), subdir)
+    dir_path = os.path.join('artifacts', '_'.join(sig_alg_oids), subdir)
     os.makedirs(dir_path, exist_ok=True)
 
     path = os.path.join(dir_path, filename)
@@ -27,7 +27,7 @@ def persist(sig_alg_oids,
             ica_cert, ica_crl,
             # ee_signer,
             ee_cert):
-    shutil.rmtree('_'.join(sig_alg_oids), True)
+    shutil.rmtree(os.path.join('artifacts', '_'.join(sig_alg_oids)), True)
 
     # persist_artifact(sig_alg_oids, 'ta', 'ta_priv.der', root_signer.export_secret_key())
     persist_artifact(sig_alg_oids, 'ta', 'ta.der', encode(root_cert))
@@ -96,13 +96,13 @@ for sig_alg_oid in mappings.OID_TO_OQS_ALG_MAPPINGS.keys():
 
 COMPOSITE_TUPLES = [
     [
-        mappings.OQS_ALG_TO_OID_MAPPINGS['Dilithium2'],
-        mappings.OQS_ALG_TO_OID_MAPPINGS['Falcon-512'],
+        mappings.ALG_TO_OID_MAPPINGS['Dilithium2'],
+        mappings.ALG_TO_OID_MAPPINGS['ECDSA-P256-with-SHA256'],
     ],
     [
-        mappings.OQS_ALG_TO_OID_MAPPINGS['Dilithium2'],
-        mappings.OQS_ALG_TO_OID_MAPPINGS['Falcon-512'],
-        mappings.OQS_ALG_TO_OID_MAPPINGS['SPHINCS+-SHA256-128f-robust'],
+        mappings.ALG_TO_OID_MAPPINGS['Dilithium2'],
+        mappings.ALG_TO_OID_MAPPINGS['ECDSA-P256-with-SHA256'],
+        mappings.ALG_TO_OID_MAPPINGS['Falcon-512'],
     ]
 ]
 

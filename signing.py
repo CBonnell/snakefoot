@@ -1,7 +1,10 @@
 import binascii
 
 from pyasn1.codec.der.encoder import encode
-from pyasn1_alt_modules import rfc5280
+from pyasn1_alt_modules import rfc5280, rfc5480
+
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes, serialization
 
 from pyasn1.type import univ
 
@@ -12,12 +15,20 @@ import mappings
 import tbs_builder
 
 
+def _single_sign(signer, message):
+    if isinstance(signer, ec.EllipticCurvePrivateKey):
+        h = hashes.SHA256() if isinstance(signer.curve, ec.SECP256R1) else hashes.SHA384()
+        return signer.sign(message, ec.ECDSA(h))
+    else:
+        return signer.sign(message)
+
+
 def _sign(signers, message):
     if len(signers) == 1:
-        return signers[0].sign(message)
+        return _single_sign(signers[0], message)
     else:
         sigs = [
-            univ.BitString(hexValue=binascii.b2a_hex(s.sign(message))) for s in signers
+            univ.BitString(hexValue=binascii.b2a_hex(_single_sign(s, message))) for s in signers
         ]
 
         sig_value = composite_asn1.CompositeSignatureValue()
@@ -27,8 +38,18 @@ def _sign(signers, message):
 
 
 def create_key(sig_alg_oid):
-    signer = oqs.Signature(mappings.OID_TO_OQS_ALG_MAPPINGS[sig_alg_oid])
-    return signer, signer.generate_keypair()
+    if sig_alg_oid in {str(rfc5480.ecdsa_with_SHA256), str(rfc5480.ecdsa_with_SHA384)}:
+        curve = ec.SECP256R1() if sig_alg_oid == str(rfc5480.ecdsa_with_SHA256) else ec.SECP384R1()
+
+        ec_private_key = ec.generate_private_key(curve)
+        ec_public_key_octets = ec_private_key.public_key().public_bytes(
+            encoding=serialization.Encoding.X962, format=serialization.PublicFormat.UncompressedPoint
+        )
+
+        return ec_private_key, ec_public_key_octets
+    else:
+        signer = oqs.Signature(mappings.OID_TO_OQS_ALG_MAPPINGS[sig_alg_oid])
+        return signer, signer.generate_keypair()
 
 
 def create_keys(sig_alg_oids):

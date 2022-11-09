@@ -21,7 +21,7 @@ class Verifier:
 
     @staticmethod
     def _report_mismatch(subject_alg_oid, issuer_alg_oid):
-        raise ValueError(f'Algorithm mismatch. Subject signature: {subject_alg_oid}.'
+        raise ValueError(f'Algorithm mismatch. Subject signature: {subject_alg_oid}, '
                          f'Issuer SPKI: {issuer_alg_oid}')
 
     def verify(self, message: bytes, signature: bytes, signature_algorithm: rfc5280.AlgorithmIdentifier):

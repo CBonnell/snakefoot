@@ -3,7 +3,7 @@ import binascii
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from pyasn1.codec.der.encoder import encode
-from pyasn1_alt_modules import rfc5280
+from pyasn1_alt_modules import rfc5280, rfc5480
 
 from pyasn1.type import char, univ, useful
 
@@ -32,7 +32,7 @@ def build_rdn_sequence(rdns: Sequence[Tuple[univ.ObjectIdentifier, str]]):
 def _build_name(sig_alg_oids, label):
     alg_name = ' & '.join(
         (
-            mappings.OID_TO_OQS_ALG_MAPPINGS[s] for s in sig_alg_oids
+            mappings.OID_TO_ALG_MAPPINGS[s] for s in sig_alg_oids
         )
     )
 
@@ -98,25 +98,41 @@ def build_composite_sig_alg_params(sig_alg_oids):
     params = composite_asn1.CompositeParams()
 
     for sig_alg_oid in sig_alg_oids:
-        sig_alg = rfc5280.AlgorithmIdentifier()
-        sig_alg['algorithm'] = univ.ObjectIdentifier(sig_alg_oid)
+        sig_alg_id = rfc5280.AlgorithmIdentifier()
+        sig_alg_id['algorithm'] = univ.ObjectIdentifier(sig_alg_oid)
 
-        params.append(sig_alg)
+        params.append(sig_alg_id)
 
     return encode(params)
 
 
-def build_composite_key(key_algs, public_keys_octets):
+def build_composite_key(sig_alg_oids, public_keys_octets):
     composite_key = composite_asn1.CompositePublicKey()
 
-    for key_alg, public_key_octets in zip(key_algs, public_keys_octets):
+    for sig_alg_oid, public_key_octets in zip(sig_alg_oids, public_keys_octets):
         spki = rfc5280.SubjectPublicKeyInfo()
-        spki['algorithm']['algorithm'] = univ.ObjectIdentifier(key_alg)
+        spki['algorithm'] = build_key_alg_id_from_sig_alg(sig_alg_oid)
         spki['subjectPublicKey'] = univ.BitString(hexValue=binascii.b2a_hex(public_key_octets))
 
         composite_key.append(spki)
 
     return encode(composite_key)
+
+
+def build_key_alg_id_from_sig_alg(sig_alg_oid):
+    alg_id = rfc5280.AlgorithmIdentifier()
+
+    if sig_alg_oid in mappings.OID_TO_OQS_ALG_MAPPINGS:
+        alg_id['algorithm'] = univ.ObjectIdentifier(sig_alg_oid)
+    elif sig_alg_oid in {str(rfc5480.ecdsa_with_SHA256), str(rfc5480.ecdsa_with_SHA384)}:
+        curve = rfc5480.secp256r1 if sig_alg_oid == str(rfc5480.ecdsa_with_SHA256) else rfc5480.secp384r1
+
+        alg_id['algorithm'] = rfc5480.id_ecPublicKey
+        alg_id['parameters'] = encode(curve)
+    else:
+        raise ValueError(f'Unknown signature algorithm: {sig_alg_oid}')
+
+    return alg_id
 
 
 def build_tbscertificate(
@@ -146,7 +162,7 @@ def build_tbscertificate(
     tbs_cert['subject']['rdnSequence'] = subject_name
 
     if len(sig_alg_oids) == 1:
-        tbs_cert['subjectPublicKeyInfo']['algorithm']['algorithm'] = sig_alg_oids[0]
+        tbs_cert['subjectPublicKeyInfo']['algorithm'] = build_key_alg_id_from_sig_alg(sig_alg_oids[0])
     else:
         tbs_cert['subjectPublicKeyInfo']['algorithm']['algorithm'] = composite_asn1.id_composite_key
     tbs_cert['subjectPublicKeyInfo']['subjectPublicKey'] = univ.BitString(hexValue=binascii.b2a_hex(subject_key_value))

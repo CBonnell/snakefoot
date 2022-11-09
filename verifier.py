@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import zipfile
 
 from pyasn1_alt_modules import rfc5280
@@ -9,45 +10,34 @@ from verification import verify_subject_issuer_certificate, verify_crl
 import mappings
 
 
+def _read_asn1_document(dir_path, artifact_type, filename, document_cls):
+    path = os.path.join(dir_path, artifact_type, filename)
 
-def _read_asn1_document(z, sig_alg_oid, subdir, filename, document_cls):
-    path = os.path.join(sig_alg_oid, subdir, filename)
-
-    try:
-        der = z.read(path)
-    except KeyError:
-        artifacts_path = os.path.join('artifacts', path)
-
-        try:
-            der = z.read(artifacts_path)
-        except KeyError:
-            return None
+    with open(path, 'rb') as f:
+        der = f.read()
 
     doc, _ = decode(der, asn1Spec=document_cls())
 
     return doc
 
 
-def read_cert(z, sig_alg_oid, subdir, filename):
-    return _read_asn1_document(z, sig_alg_oid, subdir, filename, rfc5280.Certificate)
+def read_cert(dir_path, artifact_type, filename):
+    return _read_asn1_document(dir_path, artifact_type, filename, rfc5280.Certificate)
 
 
-def read_crl(z, sig_alg_oid, subdir, filename):
-    return _read_asn1_document(z, sig_alg_oid, subdir, filename, rfc5280.CertificateList)
+def read_crl(dir_path, artifact_type, filename):
+    return _read_asn1_document(dir_path, artifact_type, filename, rfc5280.CertificateList)
 
 
-def print_report(label, oids):
-    print('-' * 10 + ' ' + label.upper() + ' ALGORITHMS ' + '-' * 10)
-    for oid in oids:
-        name = mappings.OID_TO_OQS_ALG_MAPPINGS.get(oid, oid)
+def print_report(label, results_dirname):
+    print('-' * 10 + ' ' + label.upper() + ' TESTS ' + '-' * 10)
 
-        print(f'{name} ({oid})')
+    for result_dirname in results_dirname:
+        print(' & '.join((mappings.OID_TO_ALG_MAPPINGS.get(r, r) for r in re.split(r'[^\d.]', result_dirname))))
 
 
-def _execute_test(sig_alg_oid, signee, signer, signature_func, test):
-    sig_alg_name = mappings.OID_TO_OQS_ALG_MAPPINGS.get(sig_alg_oid, sig_alg_oid)
-
-    preamble = f'{sig_alg_name} ({sig_alg_oid}): '
+def _execute_test(dir_path, signee, signer, signature_func, test):
+    preamble = f'{dir_path}: '
 
     if not signee:
         print(preamble + f'{test} signee not specified')
@@ -65,49 +55,46 @@ def _execute_test(sig_alg_oid, signee, signer, signature_func, test):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('file', type=argparse.FileType('rb'))
-parser.add_argument('sig_alg_oid', nargs='?', default=None)
+parser.add_argument('dir_path', nargs='?', default=None)
 
 args = parser.parse_args()
 
-def _execute_sig_alg_oid_test(z, sig_alg_oid):
-    ta_cert = read_cert(z, sig_alg_oid, 'ta', 'ta.der')
-    ca_cert = read_cert(z, sig_alg_oid, 'ca', 'ca.der')
-    ee_cert = read_cert(z, sig_alg_oid, 'ee', 'cert.der')
 
-    ta_crl = read_crl(z, sig_alg_oid, 'crl', 'crl_ta.crl')
-    ca_crl = read_crl(z, sig_alg_oid, 'crl', 'crl_ca.crl')
+def _execute_dir_test(dir_path):
+    ta_cert = read_cert(dir_path, 'ta', 'ta.der')
+    ca_cert = read_cert(dir_path, 'ca', 'ca.der')
+    ee_cert = read_cert(dir_path, 'ee', 'cert.der')
+
+    ta_crl = read_crl(dir_path, 'crl', 'crl_ta.crl')
+    ca_crl = read_crl(dir_path, 'crl', 'crl_ca.crl')
 
     is_good = (
-            _execute_test(sig_alg_oid, ta_cert, ta_cert, verify_subject_issuer_certificate, 'Root') and
-            _execute_test(sig_alg_oid, ca_cert, ta_cert, verify_subject_issuer_certificate, 'Intermediate') and
-            _execute_test(sig_alg_oid, ee_cert, ca_cert, verify_subject_issuer_certificate, 'End-Entity') and
-            _execute_test(sig_alg_oid, ta_crl, ta_cert, verify_crl, 'Root CRL') and
-            _execute_test(sig_alg_oid, ca_crl, ca_cert, verify_crl, 'Intermediate CRL')
+            _execute_test(dir_path, ta_cert, ta_cert, verify_subject_issuer_certificate, 'Root') and
+            _execute_test(dir_path, ca_cert, ta_cert, verify_subject_issuer_certificate, 'Intermediate') and
+            _execute_test(dir_path, ee_cert, ca_cert, verify_subject_issuer_certificate, 'End-Entity') and
+            _execute_test(dir_path, ta_crl, ta_cert, verify_crl, 'Root CRL') and
+            _execute_test(dir_path, ca_crl, ca_cert, verify_crl, 'Intermediate CRL')
     )
 
     return is_good
 
 
-good_oids = []
-bad_oids = []
+passed_dir_tests = []
+failed_dir_tests = []
 
-with zipfile.ZipFile(args.file) as z:
-    if args.sig_alg_oid:
-        if _execute_sig_alg_oid_test(z, args.sig_alg_oid):
-            good_oids.append(args.sig_alg_oid)
+artifacts_path = os.path.join(args.dir_path, 'artifacts') if args.dir_path else 'artifacts'
+
+for d in os.scandir(artifacts_path):
+    if d.is_dir():
+        if _execute_dir_test(os.path.join(artifacts_path, d.name)):
+            passed_dir_tests.append(d.name)
         else:
-            bad_oids.append(args.sig_alg_oid)
-    else:
-        for sig_alg_oid in mappings.OID_TO_OQS_ALG_MAPPINGS.keys():
-            if _execute_sig_alg_oid_test(z, sig_alg_oid):
-                good_oids.append(sig_alg_oid)
-            else:
-                bad_oids.append(sig_alg_oid)
+            failed_dir_tests.append(d.name)
+
 
 print()
-print_report('bad', bad_oids)
+print_report('failed', failed_dir_tests)
 print()
-print_report('good', good_oids)
+print_report('passed', passed_dir_tests)
 
-exit(len(bad_oids))
+exit(len(failed_dir_tests))
