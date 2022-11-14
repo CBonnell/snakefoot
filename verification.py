@@ -39,6 +39,10 @@ class Verifier:
             if issuer_spki_oid != composite_asn1.id_composite_key:
                 Verifier._report_mismatch(subject_sig_alg_oid, issuer_spki_oid)
             spkis, _ = decode(self.spki['subjectPublicKey'].asOctets(), asn1Spec=composite_asn1.CompositePublicKey())
+
+            if any((s['algorithm']['algorithm'] == composite_asn1.id_composite_key for s in spkis)):
+                raise ValueError('Nested composite keys are prohibited')
+
             signature_algs, _ = decode(
                 signature_algorithm['parameters'], asn1Spec=composite_asn1.CompositeParams())
             signature_values, _ = decode(signature, asn1Spec=composite_asn1.CompositeSignatureValue())

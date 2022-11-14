@@ -1,4 +1,5 @@
 import binascii
+import datetime
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
@@ -135,9 +136,20 @@ def build_key_alg_id_from_sig_alg(sig_alg_oid):
     return alg_id
 
 
+def _build_validity(validity_duration: datetime.timedelta):
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    rfc5280_validity_period = validity_duration - datetime.timedelta(seconds=1)
+
+    not_before = useful.UTCTime(now.strftime('%y%m%d000000Z'))
+    not_after = useful.UTCTime((now + rfc5280_validity_period).strftime('%y%m%d235959Z'))
+
+    return not_before, not_after
+
+
 def build_tbscertificate(
         sig_alg_oids,
         issuer_name, subject_name,
+        duration_days,
         subject_key_value,
         extensions
 ):
@@ -154,8 +166,9 @@ def build_tbscertificate(
     tbs_cert['issuer']['rdnSequence'] = issuer_name
 
     validity = rfc5280.Validity()
-    validity['notBefore']['utcTime'] = useful.UTCTime('221105000000Z')
-    validity['notAfter']['utcTime'] = useful.UTCTime('321105000000Z')
+    not_before, not_after = _build_validity(datetime.timedelta(days=duration_days))
+    validity['notBefore']['utcTime'] = not_before
+    validity['notAfter']['utcTime'] = not_after
 
     tbs_cert['validity'] = validity
 
@@ -178,6 +191,7 @@ def build_root(sig_alg_oids, subject_public_key_octets):
     return build_tbscertificate(
         sig_alg_oids,
         name, name,
+        360,
         subject_public_key_octets,
         [build_basic_constraints(True),
          build_keyusage('digitalSignature,cRLSign,keyCertSign'),
@@ -193,6 +207,7 @@ def build_ica(sig_alg_oids, subject_public_key_octets, issuer_public_key_octets)
     return build_tbscertificate(
         sig_alg_oids,
         issuer_name, subject_name,
+        180,
         subject_public_key_octets,
         [build_basic_constraints(True),
          build_keyusage('digitalSignature,cRLSign,keyCertSign'),
@@ -208,6 +223,7 @@ def build_ee(sig_alg_oids, subject_public_key_octets, issuer_public_key_octets):
     return build_tbscertificate(
         sig_alg_oids,
         issuer_name, subject_name,
+        90,
         subject_public_key_octets,
         [build_basic_constraints(False),
          build_keyusage('digitalSignature'),
@@ -229,8 +245,9 @@ def build_crl(sig_alg_oids, is_root, issuer_public_key_octets):
         tbs_crl['signature']['parameters'] = build_composite_sig_alg_params(sig_alg_oids)
 
     tbs_crl['issuer']['rdnSequence'] = issuer_name
-    tbs_crl['thisUpdate']['utcTime'] = useful.UTCTime('221106000000Z')
-    tbs_crl['nextUpdate']['utcTime'] = useful.UTCTime('231106000000Z')
+    this_update, next_update = _build_validity(datetime.timedelta(days=7))
+    tbs_crl['thisUpdate']['utcTime'] = this_update
+    tbs_crl['nextUpdate']['utcTime'] = next_update
 
     tbs_crl['crlExtensions'].extend((
         build_extension(rfc5280.id_ce_cRLNumber, rfc5280.CRLNumber(1), False),

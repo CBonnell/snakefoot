@@ -1,8 +1,8 @@
 import argparse
 import os
 import re
-import zipfile
 
+from pyasn1.error import PyAsn1Error
 from pyasn1_alt_modules import rfc5280
 from pyasn1.codec.der.decoder import decode
 
@@ -13,10 +13,19 @@ import mappings
 def _read_asn1_document(dir_path, artifact_type, filename, document_cls):
     path = os.path.join(dir_path, artifact_type, filename)
 
-    with open(path, 'rb') as f:
-        der = f.read()
+    try:
+        with open(path, 'rb') as f:
+            der = f.read()
+    except IOError as e:
+        # print(f'Could not read file "{path}": {e}')
+        return None
 
-    doc, _ = decode(der, asn1Spec=document_cls())
+    try:
+        doc, _ = decode(der, asn1Spec=document_cls())
+    except PyAsn1Error as e:
+        print(f'Could not parse ASN.1 document "{path}": {e}')
+
+        return None
 
     return doc
 
@@ -47,15 +56,19 @@ def _execute_test(dir_path, signee, signer, signature_func, test):
         print(preamble + f'{test} signer not specified')
         return False
 
-    if not signature_func(signee, signer):
-        print(preamble + f'{test} failed')
+    try:
+        if not signature_func(signee, signer):
+            print(preamble + f'{test} failed')
+            return False
+    except ValueError as e:
+        print(preamble + f'{test} failed due to exception: "{e}"')
         return False
 
     return True
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('dir_path', nargs='?', default=None)
+parser.add_argument('dir_path', nargs='?', default='.')
 
 args = parser.parse_args()
 
@@ -82,7 +95,7 @@ def _execute_dir_test(dir_path):
 passed_dir_tests = []
 failed_dir_tests = []
 
-artifacts_path = os.path.join(args.dir_path, 'artifacts') if args.dir_path else 'artifacts'
+artifacts_path = os.path.join(args.dir_path, 'artifacts')
 
 for d in os.scandir(artifacts_path):
     if d.is_dir():
