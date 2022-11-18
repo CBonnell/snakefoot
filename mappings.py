@@ -1,5 +1,7 @@
 from pyasn1_alt_modules import rfc5480
 
+import composite_asn1
+
 OQS_ALG_TO_OID_MAPPINGS = {
     'Dilithium2': '1.3.6.1.4.1.2.267.7.4.4',
     'Dilithium3': '1.3.6.1.4.1.2.267.7.6.5',

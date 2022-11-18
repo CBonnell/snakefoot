@@ -11,6 +11,7 @@ from pyasn1.type import char, univ, useful
 from typing import Tuple, Sequence
 
 import composite_asn1
+import key
 import mappings
 
 
@@ -30,12 +31,10 @@ def build_rdn_sequence(rdns: Sequence[Tuple[univ.ObjectIdentifier, str]]):
     return rdn_seq
 
 
-def _build_name(sig_alg_oids, label):
-    alg_name = ' & '.join(
-        (
-            mappings.OID_TO_ALG_MAPPINGS[s] for s in sig_alg_oids
-        )
-    )
+def _build_name(public_key, label):
+    alg_str = str(public_key.key_algorithm['algorithm'])
+
+    alg_name = mappings.OID_TO_ALG_MAPPINGS.get(alg_str, alg_str)
 
     return build_rdn_sequence([(rfc5280.id_at_stateOrProvinceName, f'{alg_name} {label}')])
 
@@ -95,47 +94,6 @@ def build_keyusage(value):
     return build_extension(rfc5280.id_ce_keyUsage, ku, True)
 
 
-def build_composite_sig_alg_params(sig_alg_oids):
-    params = composite_asn1.CompositeParams()
-
-    for sig_alg_oid in sig_alg_oids:
-        sig_alg_id = rfc5280.AlgorithmIdentifier()
-        sig_alg_id['algorithm'] = univ.ObjectIdentifier(sig_alg_oid)
-
-        params.append(sig_alg_id)
-
-    return encode(params)
-
-
-def build_composite_key(sig_alg_oids, public_keys_octets):
-    composite_key = composite_asn1.CompositePublicKey()
-
-    for sig_alg_oid, public_key_octets in zip(sig_alg_oids, public_keys_octets):
-        spki = rfc5280.SubjectPublicKeyInfo()
-        spki['algorithm'] = build_key_alg_id_from_sig_alg(sig_alg_oid)
-        spki['subjectPublicKey'] = univ.BitString(hexValue=binascii.b2a_hex(public_key_octets))
-
-        composite_key.append(spki)
-
-    return encode(composite_key)
-
-
-def build_key_alg_id_from_sig_alg(sig_alg_oid):
-    alg_id = rfc5280.AlgorithmIdentifier()
-
-    if sig_alg_oid in mappings.OID_TO_OQS_ALG_MAPPINGS:
-        alg_id['algorithm'] = univ.ObjectIdentifier(sig_alg_oid)
-    elif sig_alg_oid in {str(rfc5480.ecdsa_with_SHA256), str(rfc5480.ecdsa_with_SHA384)}:
-        curve = rfc5480.secp256r1 if sig_alg_oid == str(rfc5480.ecdsa_with_SHA256) else rfc5480.secp384r1
-
-        alg_id['algorithm'] = rfc5480.id_ecPublicKey
-        alg_id['parameters'] = encode(curve)
-    else:
-        raise ValueError(f'Unknown signature algorithm: {sig_alg_oid}')
-
-    return alg_id
-
-
 def _build_validity(validity_duration: datetime.timedelta):
     now = datetime.datetime.now(tz=datetime.timezone.utc)
     rfc5280_validity_period = validity_duration - datetime.timedelta(seconds=1)
@@ -147,21 +105,17 @@ def _build_validity(validity_duration: datetime.timedelta):
 
 
 def build_tbscertificate(
-        sig_alg_oids,
+        subject_public_key: key.PublicKey,
+        issuer_public_key: key.PublicKey,
         issuer_name, subject_name,
         duration_days,
-        subject_key_value,
         extensions
 ):
     tbs_cert = rfc5280.TBSCertificate()
     tbs_cert['version'] = rfc5280.Version.namedValues['v3']
     tbs_cert['serialNumber'] = univ.Integer(x509.random_serial_number())
 
-    if len(sig_alg_oids) == 1:
-        tbs_cert['signature']['algorithm'] = sig_alg_oids[0]
-    else:
-        tbs_cert['signature']['algorithm'] = composite_asn1.id_alg_composite
-        tbs_cert['signature']['parameters'] = build_composite_sig_alg_params(sig_alg_oids)
+    tbs_cert['signature'] = issuer_public_key.signature_algorithm
 
     tbs_cert['issuer']['rdnSequence'] = issuer_name
 
@@ -174,75 +128,66 @@ def build_tbscertificate(
 
     tbs_cert['subject']['rdnSequence'] = subject_name
 
-    if len(sig_alg_oids) == 1:
-        tbs_cert['subjectPublicKeyInfo']['algorithm'] = build_key_alg_id_from_sig_alg(sig_alg_oids[0])
-    else:
-        tbs_cert['subjectPublicKeyInfo']['algorithm']['algorithm'] = composite_asn1.id_composite_key
-    tbs_cert['subjectPublicKeyInfo']['subjectPublicKey'] = univ.BitString(hexValue=binascii.b2a_hex(subject_key_value))
+    tbs_cert['subjectPublicKeyInfo'] = subject_public_key.to_spki
 
     tbs_cert['extensions'].extend(extensions)
 
     return tbs_cert
 
 
-def build_root(sig_alg_oids, subject_public_key_octets):
-    name = build_root_name(sig_alg_oids)
+def build_root(public_key):
+    name = build_root_name(public_key)
 
     return build_tbscertificate(
-        sig_alg_oids,
+        public_key,
+        public_key,
         name, name,
         360,
-        subject_public_key_octets,
         [build_basic_constraints(True),
          build_keyusage('digitalSignature,cRLSign,keyCertSign'),
-         build_authority_key_identifier(subject_public_key_octets),
-         build_subject_key_identifer(subject_public_key_octets)]
+         build_authority_key_identifier(public_key.encoded),
+         build_subject_key_identifer(public_key.encoded)]
     )
 
 
-def build_ica(sig_alg_oids, subject_public_key_octets, issuer_public_key_octets):
-    issuer_name = build_root_name(sig_alg_oids)
-    subject_name = build_intermediate_name(sig_alg_oids)
+def build_ica(subject_public_key, issuer_public_key):
+    issuer_name = build_root_name(issuer_public_key)
+    subject_name = build_intermediate_name(subject_public_key)
 
     return build_tbscertificate(
-        sig_alg_oids,
+        subject_public_key,
+        issuer_public_key,
         issuer_name, subject_name,
         180,
-        subject_public_key_octets,
         [build_basic_constraints(True),
          build_keyusage('digitalSignature,cRLSign,keyCertSign'),
-         build_authority_key_identifier(issuer_public_key_octets),
-         build_subject_key_identifer(subject_public_key_octets)]
+         build_authority_key_identifier(issuer_public_key.encoded),
+         build_subject_key_identifer(issuer_public_key.encoded)]
     )
 
 
-def build_ee(sig_alg_oids, subject_public_key_octets, issuer_public_key_octets):
-    issuer_name = build_intermediate_name(sig_alg_oids)
-    subject_name = build_end_entity_name(sig_alg_oids)
+def build_ee(subject_public_key, issuer_public_key):
+    issuer_name = build_intermediate_name(issuer_public_key)
+    subject_name = build_end_entity_name(subject_public_key)
 
     return build_tbscertificate(
-        sig_alg_oids,
+        subject_public_key, issuer_public_key,
         issuer_name, subject_name,
         90,
-        subject_public_key_octets,
         [build_basic_constraints(False),
          build_keyusage('digitalSignature'),
-         build_authority_key_identifier(issuer_public_key_octets),
-         build_subject_key_identifer(subject_public_key_octets)]
+         build_authority_key_identifier(issuer_public_key.encoded),
+         build_subject_key_identifer(subject_public_key.encoded)]
     )
 
 
-def build_crl(sig_alg_oids, is_root, issuer_public_key_octets):
-    issuer_name = build_root_name(sig_alg_oids) if is_root else build_intermediate_name(sig_alg_oids)
+def build_crl(is_root, issuer_public_key):
+    issuer_name = build_root_name(issuer_public_key) if is_root else build_intermediate_name(issuer_public_key)
 
     tbs_crl = rfc5280.TBSCertList()
     tbs_crl['version'] = rfc5280.Version.namedValues['v2']
 
-    if len(sig_alg_oids) == 1:
-        tbs_crl['signature']['algorithm'] = sig_alg_oids[0]
-    else:
-        tbs_crl['signature']['algorithm'] = composite_asn1.id_alg_composite
-        tbs_crl['signature']['parameters'] = build_composite_sig_alg_params(sig_alg_oids)
+    tbs_crl['signature'] = issuer_public_key.signature_algorithm
 
     tbs_crl['issuer']['rdnSequence'] = issuer_name
     this_update, next_update = _build_validity(datetime.timedelta(days=7))
@@ -251,7 +196,7 @@ def build_crl(sig_alg_oids, is_root, issuer_public_key_octets):
 
     tbs_crl['crlExtensions'].extend((
         build_extension(rfc5280.id_ce_cRLNumber, rfc5280.CRLNumber(1), False),
-        build_authority_key_identifier(issuer_public_key_octets),
+        build_authority_key_identifier(issuer_public_key.encoded),
     ))
 
     return tbs_crl
