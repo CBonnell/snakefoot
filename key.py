@@ -272,10 +272,8 @@ def create_dilithium3_ecdsa_p256_mapping():
     ecdsa_with_sha256_sig_alg = _create_algorithm_identifier(rfc5480.ecdsa_with_SHA256)
 
     return ExplicitCompositeKeyAlgorithm(
-        #(dilithium3_alg, ecdsa_p256_key_alg,),
-        #(dilithium3_alg, ecdsa_with_sha256_sig_alg,)
-        (ecdsa_p256_key_alg, dilithium3_alg,),
-        (ecdsa_with_sha256_sig_alg, dilithium3_alg,)
+        (dilithium3_alg, ecdsa_p256_key_alg,),
+        (dilithium3_alg, ecdsa_with_sha256_sig_alg,)
     )
 
 
