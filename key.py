@@ -44,6 +44,17 @@ def decode_spki_octets(octets) -> 'PublicKey':
     return decode_spki(spki)
 
 
+def _create_algorithm_identifier(alg_oid, parameters_asn1=None):
+    alg_id = rfc5280.AlgorithmIdentifier()
+    alg_id['algorithm'] = alg_oid
+    if parameters_asn1:
+        encoded = encode(parameters_asn1)
+
+        alg_id['parameters'] = encoded
+
+    return alg_id
+
+
 class PrivateKey(ABC):
     @property
     def raw_octets(self) -> bytes:
@@ -105,10 +116,7 @@ class OqsPublicKey(PublicKey):
 
     @property
     def key_algorithm(self) -> rfc5280.AlgorithmIdentifier:
-        alg = rfc5280.AlgorithmIdentifier()
-        alg['algorithm'] = univ.ObjectIdentifier(mappings.OQS_ALG_TO_OID_MAPPINGS[self._alg_name])
-
-        return alg
+        return _create_algorithm_identifier(univ.ObjectIdentifier(mappings.OQS_ALG_TO_OID_MAPPINGS[self._alg_name]))
 
     @property
     def signature_algorithm(self) -> rfc5280.AlgorithmIdentifier:
@@ -178,6 +186,9 @@ _CURVE_TO_SIG_ALG = {
 
 class EcPublicKey(PublicKey):
     def __init__(self, alg_oid, parameters, octets: bytes):
+        if alg_oid != rfc5480.id_ecPublicKey:
+            raise ValueError(f'Invalid key algorithm: "{str(alg_oid)}"')
+
         self._octets = octets
         self._curve_oid, _ = decode(parameters, asn1Spec=univ.ObjectIdentifier())
 
@@ -187,18 +198,11 @@ class EcPublicKey(PublicKey):
 
     @property
     def key_algorithm(self) -> rfc5280.AlgorithmIdentifier:
-        alg = rfc5280.AlgorithmIdentifier()
-        alg['algorithm'] = rfc5480.id_ecPublicKey
-        alg['parameters'] = encode(self._curve_oid)
-
-        return alg
+        return _create_algorithm_identifier(rfc5480.id_ecPublicKey, self._curve_oid)
 
     @property
     def signature_algorithm(self) -> rfc5280.AlgorithmIdentifier:
-        alg = rfc5280.AlgorithmIdentifier()
-        alg['algorithm'] = _CURVE_TO_SIG_ALG[type(self._backend_instance.curve)]
-
-        return alg
+        return _create_algorithm_identifier(_CURVE_TO_SIG_ALG[type(self._backend_instance.curve)])
 
     @property
     def raw_octets(self) -> bytes:
@@ -263,20 +267,25 @@ def create_dilithium3_ecdsa_p256_mapping():
     dilithium3_alg = rfc5280.AlgorithmIdentifier()
     dilithium3_alg['algorithm'] = univ.ObjectIdentifier(mappings.OQS_ALG_TO_OID_MAPPINGS['Dilithium3'])
 
-    ecdsa_p256_key_alg = rfc5280.AlgorithmIdentifier()
-    ecdsa_p256_key_alg['algorithm'] = rfc5480.id_ecPublicKey
-    ecdsa_p256_key_alg['parameters'] = encode(rfc5480.secp256r1)
+    ecdsa_p256_key_alg = _create_algorithm_identifier(rfc5480.id_ecPublicKey, rfc5480.secp256r1)
 
-    ecdsa_with_sha256_sig_alg = rfc5280.AlgorithmIdentifier()
-    ecdsa_with_sha256_sig_alg['algorithm'] = rfc5480.ecdsa_with_SHA256
+    ecdsa_with_sha256_sig_alg = _create_algorithm_identifier(rfc5480.ecdsa_with_SHA256)
 
     return ExplicitCompositeKeyAlgorithm(
-        (dilithium3_alg, ecdsa_p256_key_alg,),
-        (dilithium3_alg, ecdsa_with_sha256_sig_alg,)
+        #(dilithium3_alg, ecdsa_p256_key_alg,),
+        #(dilithium3_alg, ecdsa_with_sha256_sig_alg,)
+        (ecdsa_p256_key_alg, dilithium3_alg,),
+        (ecdsa_with_sha256_sig_alg, dilithium3_alg,)
     )
 
 
 EXPLICIT_KEY_OID_TO_ALGORITHM_MAPPINGS[composite_asn1.id_dilithium3_ecdsa_P256] = create_dilithium3_ecdsa_p256_mapping()
+
+
+def _verify_composite_key_consistency(expected_key_algorithms, public_keys):
+    for expected_key_algorithm, public_key in zip(expected_key_algorithms, public_keys):
+        if encode(expected_key_algorithm) != encode(public_key.key_algorithm):
+            raise ValueError('Composite key algorithm and public key mismatch')
 
 
 class CompositePublicKey(PublicKey):
@@ -295,37 +304,29 @@ class CompositePublicKey(PublicKey):
 
     @classmethod
     def from_public_keys(cls, alg_oid, public_keys):
-        explicit_composite_mapping = EXPLICIT_KEY_OID_TO_ALGORITHM_MAPPINGS.get(alg_oid)
+        explicit_mapping = EXPLICIT_KEY_OID_TO_ALGORITHM_MAPPINGS.get(alg_oid)
 
-        if explicit_composite_mapping is not None:
-            # TODO: verify explicit OID and public key consistency
-            pass
-        elif any((s.key_algorithm['algorithm'] == composite_asn1.id_composite_key for s in public_keys)):
-            raise ValueError('Nested composite keys are prohibited')
+        if explicit_mapping is None:
+            if any((s.key_algorithm['algorithm'] == composite_asn1.id_composite_key for s in public_keys)):
+                raise ValueError('Nested composite keys are prohibited')
+        else:
+            _verify_composite_key_consistency(explicit_mapping.key_algorithms, public_keys)
 
         return CompositePublicKey(alg_oid, public_keys)
 
     @property
     def key_algorithm(self) -> rfc5280.AlgorithmIdentifier:
-        alg = rfc5280.AlgorithmIdentifier()
-        alg['algorithm'] = self._alg_oid
-
-        return alg
+        return _create_algorithm_identifier(self._alg_oid)
 
     @property
     def signature_algorithm(self) -> rfc5280.AlgorithmIdentifier:
-        alg = rfc5280.AlgorithmIdentifier()
-        alg['algorithm'] = composite_asn1.id_alg_composite
-
         params = composite_asn1.CompositeParams()
 
         for key in self._public_keys:
             alg_id = key.signature_algorithm
             params.append(alg_id)
 
-        alg['parameters'] = encode(params)
-
-        return alg
+        return _create_algorithm_identifier(composite_asn1.id_alg_composite, params)
 
     @property
     def raw_octets(self) -> bytes:
@@ -341,12 +342,15 @@ class CompositePublicKey(PublicKey):
         return encode(comp_key)
 
     def verify(self, message: bytes, signature: bytes, signature_algorithm: rfc5280.AlgorithmIdentifier) -> bool:
-        if signature_algorithm['algorithm'] != composite_asn1.id_alg_composite:
+        if encode(signature_algorithm) != encode(self.signature_algorithm):
             raise ValueError('Composite public key and signature algorithm mismatch')
 
         sig_params, _ = decode(signature_algorithm['parameters'], asn1Spec=composite_asn1.CompositeParams())
 
         decoded, _ = decode(signature, asn1Spec=composite_asn1.CompositeSignatureValue())
+
+        if not (len(self._public_keys) == len(decoded) and len(decoded) == len(sig_params)):
+            raise ValueError('Public key, decoded signature, and signature parameter element count mismatch')
 
         for key, sig_value, sig_alg in zip(self._public_keys, decoded, sig_params):
             if not key.verify(message, sig_value.asOctets(), sig_alg):
@@ -356,7 +360,6 @@ class CompositePublicKey(PublicKey):
 
 
 _KEY_OID_TO_CONSTRUCTOR[composite_asn1.id_composite_key] = CompositePublicKey.from_octets
-_KEY_OID_TO_CONSTRUCTOR[composite_asn1.id_dilithium3_ecdsa_P256] = CompositePublicKey.from_octets
 
 
 class CompositePrivateKey(PrivateKey):
@@ -376,3 +379,99 @@ class CompositePrivateKey(PrivateKey):
             comp_sig.append(value)
 
         return encode(comp_sig)
+
+
+class CompactCompositePublicKey(PublicKey):
+    def __init__(self, alg_oid, public_keys):
+        self._explicit_mapping = EXPLICIT_KEY_OID_TO_ALGORITHM_MAPPINGS[alg_oid]
+
+        self._alg_oid = alg_oid
+        self._public_keys = public_keys
+        self._octets = self.encoded
+
+    @staticmethod
+    def _verify_explicit_element_and_key_count(explicit_elements, value_elements):
+        explicit_element_count = len(explicit_elements)
+        value_element_count = len(value_elements)
+
+        if explicit_element_count != value_element_count:
+            raise ValueError(f'Explicit mapping element count ({explicit_element_count}) and '
+                             f'value element count ({value_element_count}) mismatch')
+
+    @staticmethod
+    def _create_spkis(explicit_mapping: ExplicitCompositeKeyAlgorithm, bit_strings: Sequence[univ.BitString]):
+        CompactCompositePublicKey._verify_explicit_element_and_key_count(explicit_mapping.key_algorithms, bit_strings)
+
+        spkis = []
+        for alg, public_key in zip(explicit_mapping.key_algorithms, bit_strings):
+            spki = rfc5280.SubjectPublicKeyInfo()
+
+            spki['algorithm'] = alg
+            spki['subjectPublicKey'] = public_key
+
+            spkis.append(spki)
+
+        return spkis
+
+    @classmethod
+    def from_octets(cls, alg_oid, parameters, octets):
+        explicit_mapping = EXPLICIT_KEY_OID_TO_ALGORITHM_MAPPINGS[alg_oid]
+
+        decoded, _ = decode(octets, asn1Spec=composite_asn1.CompactCompositePublicKey())
+
+        spkis = CompactCompositePublicKey._create_spkis(explicit_mapping, list(decoded))
+
+        public_keys = [decode_spki(s) for s in spkis]
+
+        return CompactCompositePublicKey.from_public_keys(alg_oid, public_keys)
+
+    @classmethod
+    def from_public_keys(cls, alg_oid, public_keys):
+        explicit_mapping = EXPLICIT_KEY_OID_TO_ALGORITHM_MAPPINGS[alg_oid]
+
+        CompactCompositePublicKey._verify_explicit_element_and_key_count(explicit_mapping.key_algorithms, public_keys)
+
+        _verify_composite_key_consistency(explicit_mapping.key_algorithms, public_keys)
+
+        return CompactCompositePublicKey(alg_oid, public_keys)
+
+    @property
+    def key_algorithm(self) -> rfc5280.AlgorithmIdentifier:
+        return _create_algorithm_identifier(self._alg_oid)
+
+    @property
+    def signature_algorithm(self) -> rfc5280.AlgorithmIdentifier:
+        return self.key_algorithm
+
+    @property
+    def raw_octets(self) -> bytes:
+        return self._octets
+
+    @property
+    def encoded(self) -> bytes:
+        encoded = composite_asn1.CompactCompositePublicKey()
+
+        for public_key in self._public_keys:
+            encoded.append(univ.BitString(hexValue=binascii.b2a_hex(public_key.encoded)))
+
+        return encode(encoded)
+
+    def verify(self, message: bytes, signature: bytes, signature_algorithm: rfc5280.AlgorithmIdentifier) -> bool:
+        if encode(self.signature_algorithm) != encode(signature_algorithm):
+            raise ValueError('Compact composite public key and signature algorithm mismatch')
+
+        decoded, _ = decode(signature, asn1Spec=composite_asn1.CompositeSignatureValue())
+
+        CompactCompositePublicKey._verify_explicit_element_and_key_count(
+            self._explicit_mapping.signature_algorithms, list(decoded))
+
+        for public_key, sig_value, sig_alg in zip(self._public_keys, decoded,
+                                                  self._explicit_mapping.signature_algorithms):
+            if not public_key.verify(message, sig_value.asOctets(), sig_alg):
+                return False
+
+        return True
+
+
+# _KEY_OID_TO_CONSTRUCTOR[composite_asn1.id_dilithium3_ecdsa_P256] = CompactCompositePublicKey.from_octets
+_KEY_OID_TO_CONSTRUCTOR[composite_asn1.id_dilithium3_ecdsa_P256] = CompositePublicKey.from_octets

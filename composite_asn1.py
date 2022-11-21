@@ -36,3 +36,13 @@ CompositePublicKey.sizeSpec = constraint.ValueSizeConstraint(2, MAX)
 
 
 id_dilithium3_ecdsa_P256 = univ.ObjectIdentifier('2.16.840.1.114027.80.5.1')
+
+
+# Abbreviated explicit composite
+
+class CompactCompositePublicKey(univ.SequenceOf):
+    pass
+
+
+CompactCompositePublicKey.componentType = univ.BitString()
+CompactCompositePublicKey.sizeSpec = constraint.ValueSizeConstraint(2, MAX)

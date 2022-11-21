@@ -162,7 +162,7 @@ def build_ica(subject_public_key, issuer_public_key):
         [build_basic_constraints(True),
          build_keyusage('digitalSignature,cRLSign,keyCertSign'),
          build_authority_key_identifier(issuer_public_key.encoded),
-         build_subject_key_identifer(issuer_public_key.encoded)]
+         build_subject_key_identifer(subject_public_key.encoded)]
     )
 
 

@@ -1,6 +1,7 @@
 import argparse
 import os
 import re
+from typing import Union
 
 from pyasn1.error import PyAsn1Error
 from pyasn1_alt_modules import rfc5280

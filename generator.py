@@ -10,6 +10,7 @@ import signing
 import tbs_builder
 import os
 import shutil
+import argparse
 
 
 def persist_artifact(key_oid, subdir, filename, content):
@@ -81,11 +82,24 @@ def create_key_set():
                                (dilithium3_key_pair.public_key, ec_p256_key_pair.public_key))
     )
 
+    # key_oids_to_key_pairs[composite_asn1.id_dilithium3_ecdsa_P256] = key.KeyPair(
+    #    key.CompositePrivateKey((dilithium3_key_pair.private_key, ec_p256_key_pair.private_key,)),
+    #    key.CompactCompositePublicKey(composite_asn1.id_dilithium3_ecdsa_P256,
+    #                                  (dilithium3_key_pair.public_key, ec_p256_key_pair.public_key))
+    # )
+
     key_oids_to_key_pairs[composite_asn1.id_dilithium3_ecdsa_P256] = key_oids_to_key_pairs[
         composite_asn1.id_composite_key]
 
     return key_oids_to_key_pairs
 
+
+parser = argparse.ArgumentParser()
+parser.add_argument('output_dir', nargs='?', default='.')
+
+args = parser.parse_args()
+
+os.chdir(args.output_dir)
 
 shutil.rmtree('artifacts', True)
 

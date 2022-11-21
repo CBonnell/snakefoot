@@ -1,0 +1,6 @@
+*.zip
+artifacts/
+.git/
+.idea/
+__pycache__/
+venv/
