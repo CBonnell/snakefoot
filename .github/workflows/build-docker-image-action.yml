@@ -31,4 +31,5 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ github.actor }}/snakefoot:latest
+          tags: cbonnell/snakefoot:latest
+
