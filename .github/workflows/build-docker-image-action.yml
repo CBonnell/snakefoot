@@ -10,9 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       -
-        name: Checkout
-        uses: actions/checkout@v3
-      -
         name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       -
@@ -32,5 +29,5 @@ jobs:
           registry: ghcr.io
           context: .
           push: true
-          tags: cbonnell/snakefoot:latest
+          tags: ghcr.io/cbonnell/snakefoot:latest
 
