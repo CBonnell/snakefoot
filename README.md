@@ -5,6 +5,14 @@ and [pyasn1](https://github.com/russhousley/pyasn1-alt-modules).
 
 # Quick start
 
+Pull the latest Docker image:
+
+`docker pull ghcr.io/cbonnell/snakefoot:latest`
+
+Now you can proceed to the "Generating artifacts" and "Verifying artifacts" sections, specifying `ghcr.io/cbonnell/snakefoot:latest` as the image to run.
+
+# Building the Docker image
+
 Clone the repository:
 
 `git clone https://github.com/CBonnell/snakefoot.git`
