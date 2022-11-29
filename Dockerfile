@@ -11,7 +11,7 @@ WORKDIR liboqs
 
 RUN mkdir build && \
     cd build && \
-    cmake -GNinja -DBUILD_SHARED_LIBS=ON .. && \
+    cmake -GNinja -DBUILD_SHARED_LIBS=ON -DOQS_DIST_BUILD=ON .. && \
     ninja install
 
 ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}"
