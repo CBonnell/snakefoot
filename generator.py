@@ -40,28 +40,31 @@ def persist(key_oid,
     persist_artifact(key_oid, 'crl', 'crl_ca.crl', encode(ica_crl))
 
 
-def build_root(key_pair):
-    root_tbs = tbs_builder.build_root(key_pair.public_key)
+def build_root(key_pair, alt_key_pair=None):
+    root_tbs = tbs_builder.build_root(key_pair.public_key, alt_key_pair.public_key if alt_key_pair else None)
 
-    return signing.sign_tbscertificate(key_pair.private_key, root_tbs)
-
-
-def build_ica(ica_key_pair, root_key_pair):
-    ica_tbs = tbs_builder.build_ica(ica_key_pair.public_key, root_key_pair.public_key)
-
-    return signing.sign_tbscertificate(root_key_pair.private_key, ica_tbs)
+    return signing.sign_tbscertificate(root_tbs, key_pair.private_key, alt_key_pair)
 
 
-def build_ee(subject_key_pair, issuer_key_pair):
-    ee_tbs = tbs_builder.build_ee(subject_key_pair.public_key, issuer_key_pair.public_key)
+def build_ica(ica_key_pair, root_key_pair, alt_ica_key_pair=None, alt_root_key_pair=None):
+    ica_tbs = tbs_builder.build_ica(ica_key_pair.public_key, root_key_pair.public_key,
+                                    alt_ica_key_pair.public_key if alt_root_key_pair else None)
 
-    return signing.sign_tbscertificate(issuer_key_pair.private_key, ee_tbs)
+    return signing.sign_tbscertificate(ica_tbs, root_key_pair.private_key, alt_root_key_pair)
 
 
-def build_crl(key_pair, is_root):
-    crl_tbs = tbs_builder.build_crl(is_root, key_pair.public_key)
+def build_ee(subject_key_pair, issuer_key_pair, alt_subject_key_pair=None, alt_issuer_key_pair=None):
+    ee_tbs = tbs_builder.build_ee(subject_key_pair.public_key, issuer_key_pair.public_key,
+                                  alt_subject_key_pair.public_key if alt_subject_key_pair else None)
 
-    signed_crl = signing.sign_tbscertlist(key_pair.private_key, crl_tbs)
+    return signing.sign_tbscertificate(ee_tbs, issuer_key_pair.private_key, alt_issuer_key_pair)
+
+
+def build_crl(key_pair, is_root, alt_key_pair=None):
+    crl_tbs = tbs_builder.build_crl(is_root, key_pair.public_key,
+                                    alt_key_pair.public_key if alt_key_pair else None)
+
+    signed_crl = signing.sign_tbscertlist(crl_tbs, key_pair.private_key, alt_key_pair)
 
     return signed_crl
 
@@ -115,3 +118,20 @@ for alg_oid in root_key_set.keys():
     ica_crl = build_crl(ica_key_set[alg_oid], False)
 
     persist(str(alg_oid), root_cert, root_crl, ica_cert, ica_crl, ee_cert)
+
+root_classical_key = root_key_set[rfc5480.id_ecPublicKey]
+root_alt_key = root_key_set[univ.ObjectIdentifier(mappings.OQS_ALG_TO_OID_MAPPINGS['Dilithium3'])]
+
+ica_classical_key = ica_key_set[rfc5480.id_ecPublicKey]
+ica_alt_key = ica_key_set[univ.ObjectIdentifier(mappings.OQS_ALG_TO_OID_MAPPINGS['Dilithium3'])]
+
+ee_classical_key = ee_key_set[rfc5480.id_ecPublicKey]
+ee_alt_key = ee_key_set[univ.ObjectIdentifier(mappings.OQS_ALG_TO_OID_MAPPINGS['Dilithium3'])]
+
+root_cert = build_root(root_classical_key, root_alt_key)
+ica_cert = build_ica(ica_classical_key, root_classical_key, ica_alt_key, root_alt_key)
+ee_cert = build_ee(ee_classical_key, ica_classical_key, ee_alt_key, ica_alt_key)
+root_crl = build_crl(root_classical_key, True, root_alt_key)
+ica_crl = build_crl(ica_classical_key, False, ica_alt_key)
+
+persist('HybridCatalyst', root_cert, root_crl, ica_cert, ica_crl, ee_cert)

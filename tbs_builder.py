@@ -11,6 +11,7 @@ from pyasn1.type import char, univ, useful
 from typing import Tuple, Sequence
 
 import composite_asn1
+import hybrid_asn1
 import key
 import mappings
 
@@ -31,24 +32,31 @@ def build_rdn_sequence(rdns: Sequence[Tuple[univ.ObjectIdentifier, str]]):
     return rdn_seq
 
 
-def _build_name(public_key, label):
+def _build_name(public_key, label, alt_public_key=None):
     alg_str = str(public_key.key_algorithm['algorithm'])
 
     alg_name = mappings.OID_TO_ALG_MAPPINGS.get(alg_str, alg_str)
 
-    return build_rdn_sequence([(rfc5280.id_at_stateOrProvinceName, f'{alg_name} {label}')])
+    name = alg_name
+
+    if alt_public_key:
+        name += ' Hybrid Catalyst'
+
+    name += f' {label}'
+
+    return build_rdn_sequence([(rfc5280.id_at_stateOrProvinceName, name)])
 
 
-def build_root_name(sig_alg_oids):
-    return _build_name(sig_alg_oids, 'Root')
+def build_root_name(public_key, alt_public_key=None):
+    return _build_name(public_key, 'Root', alt_public_key)
 
 
-def build_intermediate_name(sig_alg_oids):
-    return _build_name(sig_alg_oids, 'Intermediate')
+def build_intermediate_name(public_key, alt_public_key=None):
+    return _build_name(public_key, 'Intermediate', alt_public_key)
 
 
-def build_end_entity_name(sig_alg_oids):
-    return _build_name(sig_alg_oids, 'End-Entity')
+def build_end_entity_name(public_key, alt_public_key=None):
+    return _build_name(public_key, 'End-Entity', alt_public_key)
 
 
 def calculate_key_identifier(key_octets: bytes) -> bytes:
@@ -94,6 +102,20 @@ def build_keyusage(value):
     return build_extension(rfc5280.id_ce_keyUsage, ku, True)
 
 
+def build_alt_sig_alg(alg_id):
+    return build_extension(hybrid_asn1.id_ce_altSignatureAlgorithm, alg_id)
+
+
+def build_alt_spki(spki):
+    return build_extension(hybrid_asn1.id_ce_subjectAltPublicKeyInfo, spki)
+
+
+def build_alt_sig_value(value):
+    alt_sig_value = hybrid_asn1.AltSignatureValue(value=value)
+
+    return build_extension(hybrid_asn1.id_ce_altSignatureValue, alt_sig_value)
+
+
 def _build_validity(validity_duration: datetime.timedelta):
     now = datetime.datetime.now(tz=datetime.timezone.utc)
     rfc5280_validity_period = validity_duration - datetime.timedelta(seconds=1)
@@ -109,7 +131,8 @@ def build_tbscertificate(
         issuer_public_key: key.PublicKey,
         issuer_name, subject_name,
         duration_days,
-        extensions
+        extensions,
+        subject_alt_public_key: key.PublicKey,
 ):
     tbs_cert = rfc5280.TBSCertificate()
     tbs_cert['version'] = rfc5280.Version.namedValues['v3']
@@ -132,11 +155,16 @@ def build_tbscertificate(
 
     tbs_cert['extensions'].extend(extensions)
 
+    if subject_alt_public_key is not None:
+        alt_spki_ext = build_alt_spki(subject_alt_public_key.to_spki)
+
+        tbs_cert['extensions'].append(alt_spki_ext)
+
     return tbs_cert
 
 
-def build_root(public_key):
-    name = build_root_name(public_key)
+def build_root(public_key, alt_public_key=None):
+    name = build_root_name(public_key, alt_public_key)
 
     return build_tbscertificate(
         public_key,
@@ -146,13 +174,14 @@ def build_root(public_key):
         [build_basic_constraints(True),
          build_keyusage('digitalSignature,cRLSign,keyCertSign'),
          build_authority_key_identifier(public_key.encoded),
-         build_subject_key_identifer(public_key.encoded)]
+         build_subject_key_identifer(public_key.encoded)],
+        alt_public_key
     )
 
 
-def build_ica(subject_public_key, issuer_public_key):
+def build_ica(subject_public_key, issuer_public_key, subject_alt_public_key=None):
     issuer_name = build_root_name(issuer_public_key)
-    subject_name = build_intermediate_name(subject_public_key)
+    subject_name = build_intermediate_name(subject_public_key, subject_alt_public_key)
 
     return build_tbscertificate(
         subject_public_key,
@@ -162,13 +191,14 @@ def build_ica(subject_public_key, issuer_public_key):
         [build_basic_constraints(True),
          build_keyusage('digitalSignature,cRLSign,keyCertSign'),
          build_authority_key_identifier(issuer_public_key.encoded),
-         build_subject_key_identifer(subject_public_key.encoded)]
+         build_subject_key_identifer(subject_public_key.encoded)],
+        subject_alt_public_key
     )
 
 
-def build_ee(subject_public_key, issuer_public_key):
+def build_ee(subject_public_key, issuer_public_key, subject_alt_public_key=None):
     issuer_name = build_intermediate_name(issuer_public_key)
-    subject_name = build_end_entity_name(subject_public_key)
+    subject_name = build_end_entity_name(subject_public_key, subject_alt_public_key)
 
     return build_tbscertificate(
         subject_public_key, issuer_public_key,
@@ -177,12 +207,14 @@ def build_ee(subject_public_key, issuer_public_key):
         [build_basic_constraints(False),
          build_keyusage('digitalSignature'),
          build_authority_key_identifier(issuer_public_key.encoded),
-         build_subject_key_identifer(subject_public_key.encoded)]
+         build_subject_key_identifer(subject_public_key.encoded)],
+        subject_alt_public_key
     )
 
 
-def build_crl(is_root, issuer_public_key):
-    issuer_name = build_root_name(issuer_public_key) if is_root else build_intermediate_name(issuer_public_key)
+def build_crl(is_root, issuer_public_key, issuer_alt_public_key=None):
+    issuer_name = build_root_name(issuer_public_key, issuer_alt_public_key) if is_root else build_intermediate_name(
+        issuer_public_key, issuer_alt_public_key)
 
     tbs_crl = rfc5280.TBSCertList()
     tbs_crl['version'] = rfc5280.Version.namedValues['v2']
