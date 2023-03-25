@@ -134,4 +134,4 @@ ee_cert = build_ee(ee_classical_key, ica_classical_key, ee_alt_key, ica_alt_key)
 root_crl = build_crl(root_classical_key, True, root_alt_key)
 ica_crl = build_crl(ica_classical_key, False, ica_alt_key)
 
-persist('HybridCatalyst', root_cert, root_crl, ica_cert, ica_crl, ee_cert)
+persist('hybrid', root_cert, root_crl, ica_cert, ica_crl, ee_cert)
