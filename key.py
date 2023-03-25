@@ -1,17 +1,16 @@
 import binascii
 from abc import ABC
-from typing import NamedTuple, Sequence, Tuple
+from typing import NamedTuple, Sequence, Union
 
+import oqs
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ed448, ed25519
 from pyasn1.codec.der.decoder import decode
 from pyasn1.codec.der.encoder import encode
 from pyasn1.type import univ
-from pyasn1_alt_modules import rfc5280, rfc5480
-
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives import serialization, hashes
-
-import oqs
+from pyasn1_alt_modules import rfc5280, rfc5480, rfc8410
 
 import composite_asn1
 import mappings
@@ -253,6 +252,75 @@ class EcPrivateKey(PrivateKey):
         return KeyPair(
             EcPrivateKey(crypto_private_key),
             EcPublicKey(rfc5480.id_ecPublicKey, encode(_CURVE_TO_OID[type(curve)]), crypto_public_key_octets))
+
+
+class EddsaPublicKey(PublicKey):
+    def __init__(self, alg_oid, parameters, octets):
+        if alg_oid not in {rfc8410.id_Ed448, rfc8410.id_Ed25519}:
+            raise ValueError(f'Invalid key algorithm: "{str(alg_oid)}"')
+
+        self._alg_oid = alg_oid
+
+        self._octets = octets
+
+        self._backend_instance = ed25519.Ed25519PublicKey.from_public_bytes(octets)
+
+    @property
+    def key_algorithm(self) -> rfc5280.AlgorithmIdentifier:
+        return _create_algorithm_identifier(self._alg_oid)
+
+    @property
+    def signature_algorithm(self) -> rfc5280.AlgorithmIdentifier:
+        return self.key_algorithm
+
+    @property
+    def raw_octets(self) -> bytes:
+        return self._octets
+
+    def verify(self, message: bytes, signature: bytes, signature_algorithm: rfc5280.AlgorithmIdentifier) -> bool:
+        if encode(self.signature_algorithm) != encode(signature_algorithm):
+            raise ValueError('EdDSA signature algorithm mismatch')
+
+        try:
+            self._backend_instance.verify(signature, message)
+
+            return True
+        except InvalidSignature:
+            return False
+
+
+_KEY_OID_TO_CONSTRUCTOR[rfc8410.id_Ed448] = EddsaPublicKey
+_KEY_OID_TO_CONSTRUCTOR[rfc8410.id_Ed25519] = EddsaPublicKey
+
+
+class EddsaPrivateKey(PrivateKey):
+    def __init__(self, cryptography_obj: Union[ed448.Ed448PrivateKey, ed25519.Ed25519PrivateKey]):
+        self._backend_instance = cryptography_obj
+
+    @property
+    def raw_octets(self) -> bytes:
+        raise NotImplementedError()
+
+    def sign(self, message: bytes) -> bytes:
+        return self._backend_instance.sign(message)
+
+    @staticmethod
+    def generate(alg_oid) -> KeyPair:
+        if alg_oid == rfc8410.id_Ed448:
+            ed_cls = ed448.Ed448PrivateKey
+        elif alg_oid == rfc8410.id_Ed25519:
+            ed_cls = ed25519.Ed25519PrivateKey
+        else:
+            raise ValueError(f'Invalid key algorithm: "{str(alg_oid)}"')
+
+        cryptography_private_key = ed_cls.generate()
+        cryptography_public_key = cryptography_private_key.public_key()
+
+        return KeyPair(
+            EddsaPrivateKey(cryptography_private_key),
+            EddsaPublicKey(alg_oid, None, cryptography_public_key.public_bytes(
+                encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
+            )))
 
 
 class ExplicitCompositeKeyAlgorithm(NamedTuple):
