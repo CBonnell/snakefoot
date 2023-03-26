@@ -191,7 +191,10 @@ class EcPublicKey(PublicKey):
         self._octets = octets
         self._curve_oid, _ = decode(parameters, asn1Spec=univ.ObjectIdentifier())
 
-        curve_cls = _OID_TO_CURVE[self._curve_oid]
+        curve_cls = _OID_TO_CURVE.get(self._curve_oid)
+
+        if curve_cls is None:
+            raise ValueError(f'Unsupported curve: "{str(self._curve_oid)}"')
 
         self._backend_instance = ec.EllipticCurvePublicKey.from_encoded_point(curve_cls(), octets)
 

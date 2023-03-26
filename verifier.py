@@ -6,7 +6,7 @@ import sys
 
 from pyasn1.codec.der.decoder import decode
 from pyasn1.error import PyAsn1Error
-from pyasn1_alt_modules import rfc5280
+from pyasn1_alt_modules import rfc5280, pem
 
 import mappings
 from verification import verify_subject_issuer_certificate, verify_crl
@@ -16,9 +16,24 @@ def print_to_err(message=''):
     print(message, file=sys.stderr)
 
 
-def _read_asn1_document(dir_path, artifact_type, filename, document_cls):
-    path = os.path.join(dir_path, artifact_type, filename)
+def _read_pem_postels_law(path, document_cls):
+    try:
+        with open(path, 'r') as f:
+            der = pem.readPemFromFile(f)
+    except IOError as e:
+        return None
 
+    try:
+        doc, _ = decode(der, asn1Spec=document_cls())
+    except PyAsn1Error as e:
+        print_to_err(f'Could not parse ASN.1 document "{path}": {e}')
+
+        return None
+
+    return doc
+
+
+def _read_der_document(path, document_cls):
     try:
         with open(path, 'rb') as f:
             der = f.read()
@@ -34,6 +49,25 @@ def _read_asn1_document(dir_path, artifact_type, filename, document_cls):
         return None
 
     return doc
+
+
+def _read_asn1_document(dir_path, artifact_type, filename, document_cls):
+    if '.' not in filename:
+        der_path = os.path.join(dir_path, artifact_type, f'{filename}.der')
+        pem_path = os.path.join(dir_path, artifact_type, f'{filename}.pem')
+    else:
+        der_path = os.path.join(dir_path, artifact_type, filename)
+        pem_path = None
+
+    der_doc = _read_der_document(der_path, document_cls)
+
+    if der_doc is not None:
+        return der_doc
+
+    if pem_path is not None:
+        return _read_pem_postels_law(pem_path, document_cls)
+
+    return None
 
 
 def read_cert(dir_path, artifact_type, filename):
@@ -81,12 +115,12 @@ args = parser.parse_args()
 
 
 def _execute_dir_test(c, dir_path):
-    ta_cert = read_cert(dir_path, 'ta', 'ta.der')
-    ca_cert = read_cert(dir_path, 'ca', 'ca.der')
-    ee_cert = read_cert(dir_path, 'ee', 'cert.der')
+    ta_cert = read_cert(dir_path, 'ta', 'ta')
+    ca_cert = read_cert(dir_path, 'ca', 'ca')
+    ee_cert = read_cert(dir_path, 'ee', 'cert')
 
-    ta_crl = read_crl(dir_path, 'crl', 'crl_ta.crl')
-    ca_crl = read_crl(dir_path, 'crl', 'crl_ca.crl')
+    ta_crl = read_crl(dir_path, 'crl', 'crl_ta')
+    ca_crl = read_crl(dir_path, 'crl', 'crl_ca')
 
     row_dict = {
         'key_algorithm_oid': os.path.basename(dir_path),
