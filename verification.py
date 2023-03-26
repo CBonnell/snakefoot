@@ -33,8 +33,9 @@ def _verify_alt_signature(doc_asn1, issuer_cert):
     alt_signature_value, _ = decode(alt_signature_value_ext['extnValue'], asn1Spec=hybrid_asn1.AltSignatureValue())
 
     tbs = hybrid.get_tbs(doc_copy)
+    pre_tbs = hybrid.get_pre_tbs_from_tbs(tbs)
 
-    return alt_public_key.verify(encode(tbs), alt_signature_value.asOctets(), alt_signature_alg)
+    return alt_public_key.verify(encode(pre_tbs), alt_signature_value.asOctets(), alt_signature_alg)
 
 
 def verify_subject_issuer_certificate(subject_cert: rfc5280.Certificate, issuer_cert: rfc5280.Certificate) -> bool:

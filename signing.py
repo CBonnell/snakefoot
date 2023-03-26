@@ -6,6 +6,7 @@ from pyasn1_alt_modules import rfc5280
 
 from pyasn1.type import univ
 
+import hybrid
 import key
 import tbs_builder
 
@@ -15,7 +16,9 @@ def _sign_with_alt_sig(key_pair: key.KeyPair, tbs, extensions):
 
     extensions.append(alt_sig_alg_ext)
 
-    alt_signature = key_pair.private_key.sign(encode(tbs))
+    pre_tbs = hybrid.get_pre_tbs_from_tbs(tbs)
+
+    alt_signature = key_pair.private_key.sign(encode(pre_tbs))
 
     alt_sig_value_ext = tbs_builder.build_alt_sig_value(univ.BitString(hexValue=binascii.b2a_hex(alt_signature)))
 

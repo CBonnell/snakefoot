@@ -7,6 +7,26 @@ import hybrid_asn1
 import key
 
 
+def get_pre_tbs_from_tbs(tbs):
+    if isinstance(tbs, rfc5280.TBSCertificate):
+        pre_cls = hybrid_asn1.PreTBSCertificate
+    elif isinstance(tbs, rfc5280.TBSCertList):
+        pre_cls = hybrid_asn1.PreTBSCertList
+    else:
+        return None
+
+    pre_instance = pre_cls()
+
+    pre_tbs_component_count = len(pre_cls.componentType)
+
+    for i in range(pre_tbs_component_count):
+        nt = pre_cls.componentType[i]
+
+        pre_instance[nt.name] = tbs[nt.name]
+
+    return pre_instance
+
+
 def get_tbs(document):
     if isinstance(document, rfc5280.Certificate):
         return document['tbsCertificate']
