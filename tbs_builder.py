@@ -10,6 +10,7 @@ from pyasn1.type import char, univ, useful
 
 from typing import Tuple, Sequence
 
+import chameleon_asn1
 import composite_asn1
 import hybrid_asn1
 import key
@@ -114,6 +115,31 @@ def build_alt_sig_value(value):
     alt_sig_value = hybrid_asn1.AltSignatureValue(value=value)
 
     return build_extension(hybrid_asn1.id_ce_altSignatureValue, alt_sig_value)
+
+
+def build_chameleon_delta_descriptor(serial_number, signature_value, sig_alg=None, issuer=None, subject=None,
+                                     spki=None, extensions=None):
+    if extensions is None:
+        extensions = []
+
+    ext_value = chameleon_asn1.ChameleonDeltaDescriptor()
+    ext_value['serialNumber'] = serial_number
+    ext_value['signatureValue'] = signature_value
+
+    if sig_alg is not None:
+        ext_value['signature']['algorithm'] = sig_alg['algorithm']
+        ext_value['signature']['parameters'] = sig_alg['parameters']
+    if issuer is not None:
+        ext_value['issuer']['rdnSequence'] = issuer['rdnSequence']
+    if subject is not None:
+        ext_value['subject']['rdnSequence'] = subject['rdnSequence']
+    if spki is not None:
+        ext_value['subjectPublicKeyInfo']['algorithm'] = spki['algorithm']
+        ext_value['subjectPublicKeyInfo']['subjectPublicKey'] = spki['subjectPublicKey']
+    if extensions is not None:
+        ext_value['extensions'].extend(extensions)
+
+    return build_extension(chameleon_asn1.id_ce_prototype_chameleon_delta_descriptor, ext_value)
 
 
 def _build_validity(validity_duration: datetime.timedelta):

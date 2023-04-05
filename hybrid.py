@@ -61,19 +61,25 @@ def extract_classical_decoded_key(issuer_cert):
     return key.decode_spki(issuer_cert['tbsCertificate']['subjectPublicKeyInfo'])
 
 
+def get_extension_idx_by_oid(exts, oid):
+    found_idx = None
+
+    for i, ext in enumerate(exts):
+        if ext['extnID'] == oid:
+            found_idx = i
+
+            break
+
+    return found_idx
+
+
 def pop_extension(extn_oid, document):
     exts = _get_extensions(document)
 
     if exts is None:
         return None
 
-    found_idx = None
-
-    for i, ext in enumerate(exts):
-        if ext['extnID'] == extn_oid:
-            found_idx = i
-
-            break
+    found_idx = get_extension_idx_by_oid(exts, extn_oid)
 
     if found_idx is None:
         return None

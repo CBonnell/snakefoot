@@ -3,6 +3,7 @@ from pyasn1.codec.der.encoder import encode
 from pyasn1.type import univ
 from pyasn1_alt_modules import rfc5480
 
+import chameleon
 import composite_asn1
 import key
 import mappings
@@ -40,22 +41,31 @@ def persist(key_oid,
     persist_artifact(key_oid, 'crl', 'crl_ca.crl', encode(ica_crl))
 
 
-def build_root(key_pair, alt_key_pair=None):
+def build_root(key_pair, alt_key_pair=None, delta_cert=None):
     root_tbs = tbs_builder.build_root(key_pair.public_key, alt_key_pair.public_key if alt_key_pair else None)
+
+    if delta_cert:
+        root_tbs['extensions'].append(chameleon.build_delta_cert_descriptor(root_tbs, delta_cert))
 
     return signing.sign_tbscertificate(root_tbs, key_pair.private_key, alt_key_pair)
 
 
-def build_ica(ica_key_pair, root_key_pair, alt_ica_key_pair=None, alt_root_key_pair=None):
+def build_ica(ica_key_pair, root_key_pair, alt_ica_key_pair=None, alt_root_key_pair=None, delta_cert=None):
     ica_tbs = tbs_builder.build_ica(ica_key_pair.public_key, root_key_pair.public_key,
                                     alt_ica_key_pair.public_key if alt_root_key_pair else None)
+
+    if delta_cert:
+        ica_tbs['extensions'].append(chameleon.build_delta_cert_descriptor(ica_tbs, delta_cert))
 
     return signing.sign_tbscertificate(ica_tbs, root_key_pair.private_key, alt_root_key_pair)
 
 
-def build_ee(subject_key_pair, issuer_key_pair, alt_subject_key_pair=None, alt_issuer_key_pair=None):
+def build_ee(subject_key_pair, issuer_key_pair, alt_subject_key_pair=None, alt_issuer_key_pair=None, delta_cert=None):
     ee_tbs = tbs_builder.build_ee(subject_key_pair.public_key, issuer_key_pair.public_key,
                                   alt_subject_key_pair.public_key if alt_subject_key_pair else None)
+
+    if delta_cert:
+        ee_tbs['extensions'].append(chameleon.build_delta_cert_descriptor(ee_tbs, delta_cert))
 
     return signing.sign_tbscertificate(ee_tbs, issuer_key_pair.private_key, alt_issuer_key_pair)
 
@@ -135,3 +145,29 @@ root_crl = build_crl(root_classical_key, True, root_alt_key)
 ica_crl = build_crl(ica_classical_key, False, ica_alt_key)
 
 persist('hybrid', root_cert, root_crl, ica_cert, ica_crl, ee_cert)
+
+root_delta_cert = build_root(root_classical_key)
+ica_delta_cert = build_ica(ica_classical_key, root_classical_key)
+ee_delta_cert = build_ee(ee_classical_key, ica_classical_key)
+
+root_delta_crl = build_crl(root_classical_key, True)
+ica_delta_crl = build_crl(ica_classical_key, False)
+
+persist('delta', root_delta_cert, root_delta_crl, ica_delta_cert, ica_delta_crl, ee_delta_cert)
+
+root_base_cert = build_root(root_alt_key, delta_cert=root_delta_cert)
+ica_base_cert = build_ica(ica_alt_key, root_alt_key, delta_cert=ica_delta_cert)
+ee_base_cert = build_ee(ee_alt_key, ica_alt_key, delta_cert=ee_delta_cert)
+
+root_base_crl = build_crl(root_alt_key, True)
+ica_base_crl = build_crl(ica_alt_key, False)
+
+persist('base', root_base_cert, root_base_crl, ica_base_cert, ica_base_crl, ee_base_cert)
+
+root_extracted_delta_cert = chameleon.get_delta_cert_from_base_cert(root_base_cert)
+ica_extracted_delta_cert = chameleon.get_delta_cert_from_base_cert(ica_base_cert)
+ee_extracted_delta_cert = chameleon.get_delta_cert_from_base_cert(ee_base_cert)
+
+persist('extracted', root_extracted_delta_cert, root_delta_crl, ica_extracted_delta_cert, ica_delta_crl,
+        ee_extracted_delta_cert)
+
