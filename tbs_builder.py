@@ -117,8 +117,8 @@ def build_alt_sig_value(value):
     return build_extension(hybrid_asn1.id_ce_altSignatureValue, alt_sig_value)
 
 
-def build_chameleon_delta_descriptor(serial_number, signature_value, sig_alg=None, issuer=None, subject=None,
-                                     spki=None, extensions=None):
+def build_chameleon_delta_descriptor(serial_number, signature_value, sig_alg=None, issuer=None, validity=None,
+                                     subject=None, spki=None, extensions=None):
     if extensions is None:
         extensions = []
 
@@ -131,11 +131,15 @@ def build_chameleon_delta_descriptor(serial_number, signature_value, sig_alg=Non
         ext_value['signature']['parameters'] = sig_alg['parameters']
     if issuer is not None:
         ext_value['issuer']['rdnSequence'] = issuer['rdnSequence']
+    if validity is not None:
+        ext_value['validity']['notBefore'] = validity['notBefore']
+        ext_value['validity']['notAfter'] = validity['notAfter']
     if subject is not None:
         ext_value['subject']['rdnSequence'] = subject['rdnSequence']
-    if spki is not None:
-        ext_value['subjectPublicKeyInfo']['algorithm'] = spki['algorithm']
-        ext_value['subjectPublicKeyInfo']['subjectPublicKey'] = spki['subjectPublicKey']
+
+    ext_value['subjectPublicKeyInfo']['algorithm'] = spki['algorithm']
+    ext_value['subjectPublicKeyInfo']['subjectPublicKey'] = spki['subjectPublicKey']
+
     if extensions is not None:
         ext_value['extensions'].extend(extensions)
 

@@ -19,24 +19,27 @@ def get_delta_cert_from_base_cert(cert: rfc5280.Certificate):
 
     chameleon_cert['tbsCertificate']['serialNumber'] = delta_desc['serialNumber']
 
-    if 'signature' in delta_desc:
+    if delta_desc['signature'].isValue:
         chameleon_cert['tbsCertificate']['signature']['algorithm'] = delta_desc['signature']['algorithm']
         chameleon_cert['tbsCertificate']['signature']['parameters'] = delta_desc['signature']['parameters']
 
         chameleon_cert['signatureAlgorithm']['algorithm'] = delta_desc['signature']['algorithm']
         chameleon_cert['signatureAlgorithm']['parameters'] = delta_desc['signature']['parameters']
 
-    if 'issuer' in delta_desc:
+    if delta_desc['issuer'].isValue:
         chameleon_cert['tbsCertificate']['issuer']['rdnSequence'] = delta_desc['issuer']['rdnSequence']
 
-    if 'subject' in delta_desc:
+    if delta_desc['validity'].isValue:
+        chameleon_cert['tbsCertificate']['validity']['notBefore'] = delta_desc['validity']['notBefore']
+        chameleon_cert['tbsCertificate']['validity']['notAfter'] = delta_desc['validity']['notAfter']
+
+    if delta_desc['subject'].isValue:
         chameleon_cert['tbsCertificate']['subject']['rdnSequence'] = delta_desc['subject']['rdnSequence']
 
-    if 'subjectPublicKeyInfo' in delta_desc:
-        chameleon_cert['tbsCertificate']['subjectPublicKeyInfo']['algorithm'] = delta_desc['subjectPublicKeyInfo']['algorithm']
-        chameleon_cert['tbsCertificate']['subjectPublicKeyInfo']['subjectPublicKey'] = delta_desc['subjectPublicKeyInfo']['subjectPublicKey']
+    chameleon_cert['tbsCertificate']['subjectPublicKeyInfo']['algorithm'] = delta_desc['subjectPublicKeyInfo']['algorithm']
+    chameleon_cert['tbsCertificate']['subjectPublicKeyInfo']['subjectPublicKey'] = delta_desc['subjectPublicKeyInfo']['subjectPublicKey']
 
-    if 'extensions' in delta_desc:
+    if delta_desc['extensions'].isValue:
         for delta_ext in delta_desc['extensions']:
             ext_idx = hybrid.get_extension_idx_by_oid(chameleon_cert['tbsCertificate']['extensions'],
                                                       delta_ext['extnID'])
@@ -74,13 +77,18 @@ def build_delta_cert_descriptor(base_cert_tbs: rfc5280.TBSCertificate, delta_cer
     else:
         issuer = delta_cert['tbsCertificate']['issuer']
 
+    if encode(base_cert_tbs['validity']) == encode(delta_cert['tbsCertificate']['validity']):
+        validity = None
+    else:
+        validity = delta_cert['tbsCertificate']['validity']
+
     if encode(base_cert_tbs['subject']) == encode(delta_cert['tbsCertificate']['subject']):
         subject = None
     else:
         subject = delta_cert['tbsCertificate']['subject']
 
     if encode(base_cert_tbs['subjectPublicKeyInfo']) == encode(delta_cert['tbsCertificate']['subjectPublicKeyInfo']):
-        spki = None
+        raise ValueError('SPKI in Base and Delta certificate cannot be the same')
     else:
         spki = delta_cert['tbsCertificate']['subjectPublicKeyInfo']
 
@@ -104,6 +112,7 @@ def build_delta_cert_descriptor(base_cert_tbs: rfc5280.TBSCertificate, delta_cer
         delta_cert['signature'],
         sig_alg,
         issuer,
+        validity,
         subject,
         spki,
         exts

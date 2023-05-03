@@ -16,12 +16,13 @@ ChameleonDeltaDescriptor.componentType = namedtype.NamedTypes(
     namedtype.OptionalNamedType('issuer', rfc5280.Name().subtype(
         implicitTag=tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 1)
     )),
-    namedtype.OptionalNamedType('subject', rfc5280.Name().subtype(
+    namedtype.OptionalNamedType('validity', rfc5280.Validity().subtype(
         implicitTag=tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 2)
     )),
-    namedtype.OptionalNamedType('subjectPublicKeyInfo', rfc5280.SubjectPublicKeyInfo().subtype(
+    namedtype.OptionalNamedType('subject', rfc5280.Name().subtype(
         implicitTag=tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 3)
     )),
+    namedtype.NamedType('subjectPublicKeyInfo', rfc5280.SubjectPublicKeyInfo()),
     namedtype.OptionalNamedType('extensions', rfc5280.Extensions().subtype(
         implicitTag=tag.Tag(tag.tagClassContext, tag.tagFormatSimple, 4)
     )),
