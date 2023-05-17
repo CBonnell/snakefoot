@@ -2,8 +2,10 @@ import functools
 
 from pyasn1.codec.der.decoder import decode
 from pyasn1.codec.der.encoder import encode
-from pyasn1_alt_modules import rfc5280
+from pyasn1_alt_modules import rfc5280, rfc2985, rfc2986
 
+import chameleon
+import chameleon_asn1
 import hybrid_asn1
 import key
 import hybrid
@@ -70,3 +72,38 @@ def verify_crl(crl: rfc5280.CertificateList, issuer_cert: rfc5280.Certificate) -
     alt_verified = _verify_alt_signature(crl, issuer_cert)
 
     return alt_verified or alt_verified is None
+
+
+def verify_csr(csr: rfc2986.CertificationRequest):
+    cri = csr['certificationRequestInfo']
+    base_key = key.decode_spki(cri['subjectPKInfo'])
+    base_csr_signature_octets = csr['signature'].asOctets()
+
+    base_verified = base_key.verify(encode(cri), base_csr_signature_octets, csr['signatureAlgorithm'])
+
+    if not base_verified:
+        return False
+
+    cri_copy, _ = decode(encode(cri), asn1Spec=cri)
+
+    delta_sig = chameleon.pop_attribute(chameleon_asn1.id_at_delta_certificate_request_signature, cri_copy)
+    if delta_sig is None:
+        return True
+
+    delta_sig_octets, _ = decode(delta_sig['values'][0], asn1Spec=chameleon_asn1.ChameleonCertificateRequestSignature())
+
+    delta_desc_attr_idx = chameleon.get_attribute_idx(chameleon_asn1.id_at_delta_certificate_request,
+                                                      cri['attributes'])
+    delta_desc, _ = decode(cri['attributes'][delta_desc_attr_idx]['values'][0],
+                           asn1Spec=chameleon_asn1.ChameleonCertificateRequestDescriptor())
+
+    delta_key = key.decode_spki(delta_desc['subjectPKInfo'])
+
+    if delta_desc['signatureAlgorithm'].isValue:
+        sig_alg = rfc5280.AlgorithmIdentifier()
+        sig_alg['algorithm'] = delta_desc['signatureAlgorithm']['algorithm']
+        sig_alg['parameters'] = delta_desc['signatureAlgorithm']['parameters']
+    else:
+        sig_alg = csr['signatureAlgorithm']
+
+    return delta_key.verify(encode(cri_copy), delta_sig_octets.asOctets(), sig_alg)

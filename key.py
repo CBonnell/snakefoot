@@ -21,6 +21,11 @@ class KeyPair(NamedTuple):
     public_key: 'PublicKey'
 
 
+class UnknownKeyTypeError(Exception):
+    def __init__(self, unknown_oid):
+        super().__init__(f'Unknown public key algorithm "{str(unknown_oid)}"')
+
+
 _KEY_OID_TO_CONSTRUCTOR = {}
 
 
@@ -30,7 +35,7 @@ def decode_spki(spki: rfc5280.SubjectPublicKeyInfo) -> 'PublicKey':
     spki_cons = _KEY_OID_TO_CONSTRUCTOR.get(alg_oid)
 
     if spki_cons is None:
-        raise ValueError(f'Unknown public key algorithm "{str(alg_oid)}"')
+        raise UnknownKeyTypeError(alg_oid)
 
     parameters = spki['algorithm']['parameters'] if 'parameters' in spki['algorithm'] else None
 

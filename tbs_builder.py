@@ -4,7 +4,7 @@ import datetime
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from pyasn1.codec.der.encoder import encode
-from pyasn1_alt_modules import rfc5280, rfc5480
+from pyasn1_alt_modules import rfc5280, rfc5480, rfc2986, rfc2985
 
 from pyasn1.type import char, univ, useful
 
@@ -262,3 +262,26 @@ def build_crl(is_root, issuer_public_key, issuer_alt_public_key=None):
     ))
 
     return tbs_crl
+
+
+def build_ee_cri(subject_public_key, extensions=None):
+    if extensions is None:
+        extensions = []
+
+    cri = rfc2986.CertificationRequestInfo()
+    cri['version'] = univ.Integer(0)
+    cri['subject']['rdnSequence'] = build_end_entity_name(subject_public_key)
+    cri['subjectPKInfo'] = subject_public_key.to_spki
+
+
+    if any(extensions):
+        attr = rfc5280.Attribute()
+        attr['type'] = rfc2985.pkcs_9_at_extensionRequest
+
+        exts = rfc5280.Extensions()
+        exts.extend(extensions)
+        attr['values'].append(exts)
+
+        cri['attributes'].append(attr)
+
+    return cri

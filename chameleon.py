@@ -1,10 +1,54 @@
+from typing import Sequence, Optional
+
 from pyasn1.codec.cer.decoder import decode
 from pyasn1.codec.der.encoder import encode
-from pyasn1_alt_modules import rfc5280
+from pyasn1_alt_modules import rfc5280, rfc2986, rfc2985
 
 import chameleon_asn1
 import hybrid
 import tbs_builder
+
+
+def _replace_extensions(dest_extensions, descriptor_extensions):
+    for delta_ext in descriptor_extensions:
+        ext_idx = hybrid.get_extension_idx_by_oid(dest_extensions, delta_ext['extnID'])
+
+        if ext_idx is None:
+            raise ValueError(f'Extension with OID "{delta_ext["extnID"]}" not found in certificate')
+
+        dest_extensions[ext_idx]['critical'] = delta_ext['critical']
+        dest_extensions[ext_idx]['extnValue'] = delta_ext['extnValue']
+
+
+def pop_attribute(attr_type_oid, cri: rfc2986.CertificationRequestInfo) -> Optional[rfc2985.Attribute]:
+    if 'attributes' not in cri:
+        return None
+
+    attr_idx = None
+    for idx, attr in enumerate(cri['attributes']):
+        if attr['type'] == attr_type_oid:
+            attr_idx = idx
+            break
+
+    if attr_idx is None:
+        return None
+    else:
+        new_attrs = list(cri['attributes'])
+
+        popped_attr = new_attrs.pop(attr_idx)
+
+        cri['attributes'].clear()
+        cri['attributes'].extend(new_attrs)
+
+        return popped_attr
+
+
+def get_attribute_idx(attr_oid, attrs):
+    for idx, attr in enumerate(attrs):
+        if attr['type'] == attr_oid:
+            return idx
+
+    return None
 
 
 def get_delta_cert_from_base_cert(cert: rfc5280.Certificate):
@@ -40,15 +84,7 @@ def get_delta_cert_from_base_cert(cert: rfc5280.Certificate):
     chameleon_cert['tbsCertificate']['subjectPublicKeyInfo']['subjectPublicKey'] = delta_desc['subjectPublicKeyInfo']['subjectPublicKey']
 
     if delta_desc['extensions'].isValue:
-        for delta_ext in delta_desc['extensions']:
-            ext_idx = hybrid.get_extension_idx_by_oid(chameleon_cert['tbsCertificate']['extensions'],
-                                                      delta_ext['extnID'])
-
-            if ext_idx is None:
-                raise ValueError(f'Extension with OID "{delta_ext["extnID"]}" not found in certificate')
-
-            chameleon_cert['tbsCertificate']['extensions'][ext_idx]['critical'] = delta_ext['critical']
-            chameleon_cert['tbsCertificate']['extensions'][ext_idx]['extnValue'] = delta_ext['extnValue']
+        _replace_extensions(chameleon_cert['tbsCertificate']['extensions'], delta_desc['extensions'])
 
     chameleon_cert['signature'] = delta_desc['signatureValue']
 
@@ -57,6 +93,75 @@ def get_delta_cert_from_base_cert(cert: rfc5280.Certificate):
 
 def _get_extn_oids(exts):
     return {e['extnID'] for e in exts}
+
+
+def build_delta_cert_descriptor_extensions(base_cert_exts: rfc5280.Extensions, delta_cert_exts: rfc5280.Extensions
+                                           ) -> Optional[Sequence[rfc5280.Extension]]:
+    exts = []
+
+    for ext in base_cert_exts:
+        delta_ext_idx = hybrid.get_extension_idx_by_oid(delta_cert_exts, ext['extnID'])
+
+        if delta_ext_idx is None:
+            continue
+
+        delta_ext = delta_cert_exts[delta_ext_idx]
+
+        if encode(ext) == encode(delta_ext):
+            continue
+        else:
+            exts.append(delta_ext)
+
+    return exts if any(exts) else None
+
+
+def append_delta_cert_descriptor_request(base_cri: rfc2986.CertificationRequestInfo,
+                                        base_sig_alg: rfc5280.AlgorithmIdentifier,
+                                        delta_cri: rfc2986.CertificationRequestInfo,
+                                        delta_sig_alg: rfc5280.AlgorithmIdentifier):
+    if encode(base_cri['subject']) == encode(delta_cri['subject']):
+        subject = None
+    else:
+        subject = delta_cri['subject']
+
+    spki = delta_cri['subjectPKInfo']
+
+    if base_cri['attributes'].isValue or delta_cri['attributes'].isValue:
+        base_attr_idx = get_attribute_idx(rfc2985.pkcs_9_at_extensionRequest, base_cri['attributes'])
+        delta_attr_idx = get_attribute_idx(rfc2985.pkcs_9_at_extensionRequest, delta_cri['attributes'])
+
+        exts = build_delta_cert_descriptor_extensions(base_cri['attributes'][base_attr_idx]['values'][0],
+                                                      delta_cri['attributes'][delta_attr_idx]['values'][0])
+    else:
+        exts = None
+
+    if encode(base_sig_alg) == encode(delta_sig_alg):
+        sig_alg = None
+    else:
+        sig_alg = delta_sig_alg
+
+    attr = rfc2985.Attribute()
+    attr['type'] = chameleon_asn1.id_at_delta_certificate_request
+
+    attr_value = chameleon_asn1.ChameleonCertificateRequestDescriptor()
+
+    if subject is not None:
+        attr_value['subject']['rdnSequence'] = subject['rdnSequence']
+
+    attr_value['subjectPKInfo'] = spki
+
+    if exts is not None:
+        attr_value['extensions'].extend(exts)
+
+    if sig_alg is not None:
+        attr_value['signatureAlgorithm']['algorithm'] = sig_alg['algorithm']
+        attr_value['signatureAlgorithm']['parameters'] = sig_alg['parameters']
+
+    attr['values'].append(attr_value)
+
+    base_cri['attributes'].append(attr)
+
+    return base_cri
 
 
 def build_delta_cert_descriptor(base_cert_tbs: rfc5280.TBSCertificate, delta_cert: rfc5280.Certificate):
@@ -92,20 +197,9 @@ def build_delta_cert_descriptor(base_cert_tbs: rfc5280.TBSCertificate, delta_cer
     else:
         spki = delta_cert['tbsCertificate']['subjectPublicKeyInfo']
 
-    exts = []
 
-    for ext in base_cert_tbs['extensions']:
-        delta_ext_idx = hybrid.get_extension_idx_by_oid(delta_cert['tbsCertificate']['extensions'], ext['extnID'])
-
-        if delta_ext_idx is None:
-            continue
-
-        delta_ext = delta_cert['tbsCertificate']['extensions'][delta_ext_idx]
-
-        if encode(ext) == encode(delta_ext):
-            continue
-        else:
-            exts.append(delta_ext)
+    exts = build_delta_cert_descriptor_extensions(base_cert_tbs['extensions'],
+                                                  delta_cert['tbsCertificate']['extensions'])
 
     return tbs_builder.build_chameleon_delta_descriptor(
         delta_cert['tbsCertificate']['serialNumber'],

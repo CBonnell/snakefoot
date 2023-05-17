@@ -30,12 +30,15 @@ def persist_artifact(key_oid, subdir, filename, content):
 def persist(key_oid,
             root_cert, root_crl,
             ica_cert, ica_crl,
-            ee_cert):
+            ee_cert, ee_csr=None):
     persist_artifact(key_oid, 'ta', 'ta.der', encode(root_cert))
 
     persist_artifact(key_oid, 'ca', 'ca.der', encode(ica_cert))
 
     persist_artifact(key_oid, 'ee', 'cert.der', encode(ee_cert))
+
+    if ee_csr is not None:
+        persist_artifact(key_oid, 'ee', 'cert.csr', encode(ee_csr))
 
     persist_artifact(key_oid, 'crl', 'crl_ta.crl', encode(root_crl))
     persist_artifact(key_oid, 'crl', 'crl_ca.crl', encode(ica_crl))
@@ -157,12 +160,18 @@ persist('delta', root_delta_cert, root_delta_crl, ica_delta_cert, ica_delta_crl,
 
 root_base_cert = build_root(root_alt_key, delta_cert=root_delta_cert)
 ica_base_cert = build_ica(ica_alt_key, root_alt_key, delta_cert=ica_delta_cert)
+
+delta_cri = tbs_builder.build_ee_cri(ee_classical_key.public_key)
+base_cri = tbs_builder.build_ee_cri(ee_alt_key.public_key)
+
+chameleon_csr = signing.sign_chameleon_csr(base_cri, ee_alt_key, delta_cri, ee_classical_key)
+
 ee_base_cert = build_ee(ee_alt_key, ica_alt_key, delta_cert=ee_delta_cert)
 
 root_base_crl = build_crl(root_alt_key, True)
 ica_base_crl = build_crl(ica_alt_key, False)
 
-persist('base', root_base_cert, root_base_crl, ica_base_cert, ica_base_crl, ee_base_cert)
+persist('base', root_base_cert, root_base_crl, ica_base_cert, ica_base_crl, ee_base_cert, chameleon_csr)
 
 root_extracted_delta_cert = chameleon.get_delta_cert_from_base_cert(root_base_cert)
 ica_extracted_delta_cert = chameleon.get_delta_cert_from_base_cert(ica_base_cert)
