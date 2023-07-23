@@ -142,7 +142,6 @@ def _execute_dir_test(c, dir_path):
     ta_crl = read_crl(dir_path, 'crl', 'crl_ta')
     ca_crl = read_crl(dir_path, 'crl', 'crl_ca')
 
-
     row_dict = {
         'key_algorithm_oid': os.path.basename(dir_path),
         'ta': _execute_test(dir_path, ta_cert, ta_cert, verify_subject_issuer_certificate, 'Root'),
@@ -179,7 +178,6 @@ with open(f'{args.generator_name}_coreydigicert.csv', 'w') as f:
                 print_to_err(str(e))
 
                 not_executed_dir_tests.append(d.name)
-
 
 
 print_to_err()

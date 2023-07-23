@@ -6,14 +6,8 @@ OQS_ALG_TO_OID_MAPPINGS = {
     'Dilithium2': '1.3.6.1.4.1.2.267.7.4.4',
     'Dilithium3': '1.3.6.1.4.1.2.267.7.6.5',
     'Dilithium5': '1.3.6.1.4.1.2.267.7.8.7',
-    'Falcon-512': '1.3.9999.3.1',
-    'Falcon-1024': '1.3.9999.3.4',
-    'SPHINCS+-SHA256-128f-simple': '1.3.9999.6.4.4',
-    'SPHINCS+-SHA256-128s-simple': '1.3.9999.6.4.10',
-    'SPHINCS+-SHA256-192f-simple': '1.3.9999.6.5.3',
-    'SPHINCS+-SHA256-192s-simple': '1.3.9999.6.5.7',
-    'SPHINCS+-SHA256-256f-simple': '1.3.9999.6.6.3',
-    'SPHINCS+-SHA256-256s-simple': '1.3.9999.6.6.7',
+    'Falcon-512': '1.3.9999.3.6',
+    'Falcon-1024': '1.3.9999.3.9',
 }
 
 
