@@ -65,7 +65,6 @@ def _execute_test(signee, signer):
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('generator_name')
 parser.add_argument('dir_path', nargs='?', default='artifacts_certs_r3')
 
 args = parser.parse_args()

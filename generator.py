@@ -16,7 +16,7 @@ _ARTIFACT_DIRNAME = 'artifacts_certs_r3'
 
 
 def _convert_to_pem(der, document_type='CERTIFICATE'):
-    b64 = base64.encodebytes(der).decode()
+    b64 = base64.encodebytes(der).decode().strip()
 
     return '\n'.join((f'-----BEGIN {document_type}-----', b64, f'-----END {document_type}-----'))
 
