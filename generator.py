@@ -12,6 +12,9 @@ import signing
 import tbs_builder
 
 
+_ARTIFACT_DIRNAME = 'artifacts_certs_r3'
+
+
 def _convert_to_pem(der, document_type='CERTIFICATE'):
     b64 = base64.encodebytes(der).decode()
 
@@ -22,7 +25,7 @@ def persist_cert(cert, filename):
     der = encode(cert)
     pem = _convert_to_pem(der)
 
-    with open(os.path.join('artifacts', filename), 'w') as f:
+    with open(os.path.join(_ARTIFACT_DIRNAME, filename), 'w') as f:
         f.write(pem)
 
 
@@ -52,8 +55,8 @@ args = parser.parse_args()
 
 os.chdir(args.output_dir)
 
-shutil.rmtree('artifacts', True)
-os.mkdir('artifacts')
+shutil.rmtree(_ARTIFACT_DIRNAME, True)
+os.mkdir(_ARTIFACT_DIRNAME)
 
 root_key_set = [key.OqsPrivateKey.generate(alg_name)
                 for alg_name, alg_oid in mappings.OQS_ALG_TO_OID_MAPPINGS.items()
