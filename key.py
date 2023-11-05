@@ -1,4 +1,5 @@
 import binascii
+import enum
 from abc import ABC
 from typing import NamedTuple, Sequence, Union
 
@@ -78,7 +79,16 @@ class PrivateKey(ABC):
         raise NotImplementedError()
 
 
+class KeyType(enum.Enum):
+    SIGNING = enum.auto()
+    ENCRYPTION = enum.auto()
+
+
 class PublicKey(ABC):
+    @property
+    def type(self):
+        raise NotImplementedError()
+
     @property
     def key_algorithm(self) -> rfc5280.AlgorithmIdentifier:
         raise NotImplementedError()
@@ -117,6 +127,13 @@ class OqsPublicKey(PublicKey):
     def __init__(self, alg_oid: univ.ObjectIdentifier, parameters, octets: bytes):
         self._alg_name = mappings.OID_TO_OQS_ALG_MAPPINGS[str(alg_oid)]
         self._octets = octets
+
+        self._type = (KeyType.ENCRYPTION if any(self._alg_name.startswith(a) for a in mappings.ENCRYPTION_ALG_PREFIXES)
+                      else KeyType.SIGNING)
+
+    @property
+    def type(self):
+        return self._type
 
     @property
     def key_algorithm(self) -> rfc5280.AlgorithmIdentifier:
@@ -159,7 +176,10 @@ class OqsPrivateKey(PrivateKey):
 
     @staticmethod
     def generate(alg_name):
-        backend_instance = oqs.Signature(alg_name)
+        backend_cls = oqs.KeyEncapsulation if any(
+            (alg_name.startswith(a) for a in mappings.ENCRYPTION_ALG_PREFIXES)) else oqs.Signature
+        backend_instance = backend_cls(alg_name)
+
         public_key = backend_instance.generate_keypair()
 
         alg_oid = univ.ObjectIdentifier(mappings.OQS_ALG_TO_OID_MAPPINGS[alg_name])

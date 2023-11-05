@@ -235,7 +235,7 @@ def build_ee(subject_public_key, issuer_public_key, subject_alt_public_key=None)
         issuer_name, subject_name,
         90,
         [build_basic_constraints(False),
-         build_keyusage('digitalSignature'),
+         build_keyusage('digitalSignature' if subject_public_key.type == key.KeyType.SIGNING else 'keyEncipherment'),
          build_authority_key_identifier(issuer_public_key.encoded),
          build_subject_key_identifer(subject_public_key.encoded)],
         subject_alt_public_key
