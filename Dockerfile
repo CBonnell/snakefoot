@@ -6,7 +6,7 @@ RUN apt-get update && \
 RUN mkdir /git
 WORKDIR /git
 
-RUN git clone -b main https://github.com/open-quantum-safe/liboqs.git
+RUN git clone -b standard https://github.com/open-quantum-safe/liboqs.git
 WORKDIR liboqs
 
 RUN mkdir build && \
